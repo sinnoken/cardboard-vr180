@@ -16,8 +16,11 @@ object InputLog {
 
     private val lastBucket = HashMap<Int, Int>()
     private var lastMouseMs = 0L
+    private var lastR2At = -ControllerInput.CHORD_MS
+    private var lastA: String? = null
+    private var lastAAt = 0L
 
-    fun clear() { lines.clear(); lastBucket.clear() }
+    fun clear() { lines.clear(); lastBucket.clear(); lastA = null }
 
     private fun add(s: String) {
         lines.add(0, s)
@@ -30,7 +33,22 @@ object InputLog {
         val mapped = ControllerInput.map(e.keyCode)?.let { "→ " + ControllerInput.label(it) }
             ?: if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
                 "→ 交給系統調音量" else "→ App 不認得"
-        add("按鍵 $name（${e.keyCode}）$mapped · ${e.device?.name ?: "?"}")
+        val line = "按鍵 $name（${e.keyCode}）$mapped · ${e.device?.name ?: "?"}"
+        // 與 ControllerInput 相同的規則：R2 前後 CHORD_MS 內的 A 不算「選取」
+        val t = e.eventTime
+        when (e.keyCode) {
+            KeyEvent.KEYCODE_BUTTON_A -> {
+                if (t - lastR2At < ControllerInput.CHORD_MS) { add("$line（R2 同時送出，忽略）"); return }
+                lastA = line; lastAAt = t
+            }
+            KeyEvent.KEYCODE_BUTTON_R2 -> {
+                lastR2At = t
+                val i = lastA?.let { lines.indexOf(it) } ?: -1
+                if (i >= 0 && t - lastAAt < ControllerInput.CHORD_MS) lines[i] = "${lastA}（R2 同時送出，忽略）"
+                lastA = null
+            }
+        }
+        add(line)
     }
 
     fun onMotion(e: MotionEvent) {
