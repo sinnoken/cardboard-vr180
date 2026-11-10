@@ -4,9 +4,13 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
+import com.example.vr180.R
 import com.example.vr180.model.SmbConnection
 import com.example.vr180.smb.SmbRepository
 import java.io.IOException
+
+/** 本機資料夾讀不到（多半是授權被收回）。畫面端用 friendlyError 轉成依語言的說明。 */
+class FolderUnreadableException : IOException("Cannot read folder; access may have been revoked")
 
 /** 瀏覽清單中的一個項目。id 對 SMB 是相對路徑，對本機資料夾是 SAF 的 documentId。 */
 /** size 為 -1、modifiedMs 為 0 代表來源沒有提供。 */
@@ -79,7 +83,7 @@ class LocalFileSource(
                     modifiedMs = if (c.isNull(4)) 0 else c.getLong(4),
                 )
             }
-        } ?: throw IOException("無法讀取資料夾，可能已失去存取權限，請移除後重新加入")
+        } ?: throw FolderUnreadableException()
         return out.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
     }
 
@@ -96,7 +100,7 @@ class LocalFileSource(
             return runCatching {
                 context.contentResolver.query(doc, arrayOf(Document.COLUMN_DISPLAY_NAME), null, null, null)
                     ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
-            }.getOrNull() ?: tree.lastPathSegment ?: "本機資料夾"
+            }.getOrNull() ?: tree.lastPathSegment ?: context.getString(R.string.ui_local_folder_default)
         }
     }
 }

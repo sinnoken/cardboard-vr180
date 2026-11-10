@@ -20,7 +20,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.vr180.R
 import com.example.vr180.data.ProfileStore
 import com.example.vr180.input.ControllerChoice
 import com.example.vr180.input.InputLog
@@ -29,17 +32,19 @@ import com.example.vr180.input.InputLog
 @Composable
 fun KeyTestScreen(store: ProfileStore) {
     var choice by remember { mutableStateOf(store.loadControllerChoice()) }
+    val context = LocalContext.current
     DisposableEffect(Unit) {
+        InputLog.resources = context.resources
         InputLog.clear()
         InputLog.choice = choice
         InputLog.active = true
-        onDispose { InputLog.active = false }
+        onDispose { InputLog.active = false; InputLog.resources = null }
     }
     val device = InputLog.lastDevice
     val profile = choice.resolve(device)
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("按鍵配置", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.ui_keytest_layout), style = MaterialTheme.typography.titleMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ControllerChoice.entries.forEach { c ->
                 FilterChip(
@@ -49,33 +54,33 @@ fun KeyTestScreen(store: ProfileStore) {
                         InputLog.choice = c
                         store.saveControllerChoice(c)
                     },
-                    label = { Text(c.label) },
+                    label = { Text(stringResource(c.labelRes)) },
                 )
             }
         }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val profileName = stringResource(profile.labelRes)
                 Text(
-                    "使用：${profile.label}" + when {
-                        choice != ControllerChoice.AUTO -> "（手動指定）"
-                        device == null -> "（自動：按任一鍵後依控制器名稱判斷）"
-                        else -> "（自動：$device）"
+                    when {
+                        choice != ControllerChoice.AUTO -> stringResource(R.string.ui_keytest_using_manual, profileName)
+                        device == null -> stringResource(R.string.ui_keytest_using_auto_pending, profileName)
+                        else -> stringResource(R.string.ui_keytest_using_auto, profileName, device)
                     },
                     style = MaterialTheme.typography.titleSmall,
                 )
-                profile.legend().forEach { (key, action) ->
+                profile.legend(context).forEach { (key, action) ->
                     Text("$key → $action", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         Text(
-            "把每個按鍵、搖桿四個方向都按一次，最新的一筆在最上面。" +
-                "這一頁會攔下所有按鍵，要離開請按左上角的「返回」。",
+            stringResource(R.string.ui_keytest_hint),
             style = MaterialTheme.typography.bodyMedium,
         )
-        OutlinedButton(onClick = { InputLog.clear() }) { Text("清除紀錄") }
+        OutlinedButton(onClick = { InputLog.clear() }) { Text(stringResource(R.string.ui_keytest_clear)) }
         if (InputLog.lines.isEmpty()) {
-            Text("還沒有收到任何訊號。確認控制器已在系統設定配對並連線。",
+            Text(stringResource(R.string.ui_keytest_empty),
                 style = MaterialTheme.typography.bodyMedium)
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {

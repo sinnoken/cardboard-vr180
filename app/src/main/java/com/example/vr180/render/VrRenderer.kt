@@ -239,7 +239,7 @@ class VrRenderer(
             GLES30.glCompileShader(sh)
             val ok = IntArray(1)
             GLES30.glGetShaderiv(sh, GLES30.GL_COMPILE_STATUS, ok, 0)
-            check(ok[0] != 0) { "著色器編譯失敗：" + GLES30.glGetShaderInfoLog(sh) }
+            check(ok[0] != 0) { "Shader compile failed: " + GLES30.glGetShaderInfoLog(sh) }
             return sh
         }
         val p = GLES30.glCreateProgram()
@@ -248,7 +248,7 @@ class VrRenderer(
         GLES30.glLinkProgram(p)
         val ok = IntArray(1)
         GLES30.glGetProgramiv(p, GLES30.GL_LINK_STATUS, ok, 0)
-        check(ok[0] != 0) { "著色器連結失敗：" + GLES30.glGetProgramInfoLog(p) }
+        check(ok[0] != 0) { "Shader link failed: " + GLES30.glGetProgramInfoLog(p) }
         return p
     }
 

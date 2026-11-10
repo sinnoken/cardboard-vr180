@@ -1,21 +1,24 @@
 package com.example.vr180.input
 
+import android.content.Context
 import android.view.KeyEvent
+import androidx.annotation.StringRes
+import com.example.vr180.R
 
 /**
  * 按鍵配置。同一個 keycode 在不同控制器上的實體位置不同，所以依配置決定動作。
  * 對應表同時列在 README「操作」一節。
  */
-enum class ControllerProfile(val label: String) {
+enum class ControllerProfile(@StringRes val labelRes: Int) {
     /** 一般雙手手把、遙控器、鍵盤。 */
-    STANDARD("標準手把"),
+    STANDARD(R.string.ui_profile_standard),
 
     /**
      * 單手控制器（例如 MOCUTE-052）：第一列 B、SELECT，下方菱形 12 點 X、3 點 Y、6 點 R1、9 點 START，
      * 背面扳機同時送出 A＋R2。依實體位置排：左右一對是音量－／＋，下方與扳機是確認，上方開關選單。
      * 倒退／快轉與上一支／下一支交給搖桿（選單關著時）。
      */
-    ONE_HAND("單手控制器");
+    ONE_HAND(R.string.ui_profile_one_hand);
 
     fun map(keyCode: Int): VrAction? = when (this) {
         STANDARD -> standard(keyCode)
@@ -28,25 +31,28 @@ enum class ControllerProfile(val label: String) {
         }
     }
 
-    /** 按鍵測試頁顯示的對應表：(實體按鍵, 動作)。 */
-    fun legend(): List<Pair<String, String>> = when (this) {
-        STANDARD -> listOf(
-            "十字鍵／左搖桿" to "選單開著＝移動焦點；關著時左右＝倒退／快轉（按住越跳越快）、上下＝上一支／下一支",
-            "A" to "選取",
-            "B" to "返回",
-            "Start／Y" to "開關選單",
-            "X／Select" to "重新置中",
-            "L1／R1" to "倒退／快轉 10 秒",
-            "R2" to "播放／暫停",
-        )
-        ONE_HAND -> listOf(
-            "搖桿" to "選單開著＝移動焦點；關著時左右＝倒退／快轉（按住越跳越快）、上下＝上一支／下一支",
-            "扳機、R1（菱形 6 點）" to "選單開著＝選取，關著＝播放／暫停",
-            "X（菱形 12 點）" to "開關選單",
-            "START（9 點）／Y（3 點）" to "音量－／音量＋",
-            "B" to "返回",
-            "SELECT" to "重新置中",
-        )
+    /** 按鍵測試頁顯示的對應表：(實體按鍵, 動作)，依 context 的語言取字串。 */
+    fun legend(context: Context): List<Pair<String, String>> {
+        fun s(@StringRes id: Int) = context.getString(id)
+        return when (this) {
+            STANDARD -> listOf(
+                s(R.string.ui_legend_dpad_stick) to s(R.string.ui_legend_move),
+                "A" to s(R.string.ui_action_select),
+                "B" to s(R.string.ui_action_back),
+                s(R.string.ui_legend_start_y) to s(R.string.ui_action_menu),
+                s(R.string.ui_legend_x_select) to s(R.string.ui_action_recenter),
+                s(R.string.ui_legend_l1_r1) to s(R.string.ui_legend_seek),
+                "R2" to s(R.string.ui_legend_play_pause),
+            )
+            ONE_HAND -> listOf(
+                s(R.string.ui_legend_stick) to s(R.string.ui_legend_move),
+                s(R.string.ui_legend_trigger_r1) to s(R.string.ui_legend_trigger_action),
+                s(R.string.ui_legend_x_12) to s(R.string.ui_action_menu),
+                s(R.string.ui_legend_start_y_one_hand) to s(R.string.ui_legend_volume),
+                "B" to s(R.string.ui_action_back),
+                "SELECT" to s(R.string.ui_action_recenter),
+            )
+        }
     }
 
     private companion object {
@@ -74,10 +80,10 @@ enum class ControllerProfile(val label: String) {
 }
 
 /** 使用者的選擇：自動依控制器名稱判斷，或固定用某一組。存在 controller.json。 */
-enum class ControllerChoice(val label: String) {
-    AUTO("自動"),
-    STANDARD("標準手把"),
-    ONE_HAND("單手控制器");
+enum class ControllerChoice(@StringRes val labelRes: Int) {
+    AUTO(R.string.ui_choice_auto),
+    STANDARD(R.string.ui_profile_standard),
+    ONE_HAND(R.string.ui_profile_one_hand);
 
     fun resolve(deviceName: String?): ControllerProfile = when (this) {
         STANDARD -> ControllerProfile.STANDARD

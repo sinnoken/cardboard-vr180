@@ -53,6 +53,8 @@ data class LensProfile(
         )
 
         const val CARDBOARD_DEFAULT_ID = "preset-cardboard-v1"
+        const val CARDBOARD_V2_ID = "preset-cardboard-v2"
+        const val GENERIC_CENTER_ID = "preset-generic-center"
 
         /** Cardboard 官方預設值（與 Cardboard SDK 未設定眼鏡時使用的參數相同）。 */
         fun cardboardDefault(): LensProfile = presets().first()
@@ -60,16 +62,17 @@ data class LensProfile(
         /**
          * 預設檔僅為起點，請戴上眼鏡後在 VR 校正模式微調。
          * 預設檔使用固定 id 且永遠不會被修改；校正後會另存成新的設定檔。
+         * name 只是開發用的英文備註，畫面上的名稱一律用 [displayName] 依語言取得。
          */
         fun presets(): List<LensProfile> = listOf(
             // Cardboard v1 官方參數（tray 35mm，扣掉約 4mm 手機下邊框）
-            LensProfile(id = CARDBOARD_DEFAULT_ID, name = "Cardboard 預設值", interLensMm = 60f, screenToLensMm = 42f,
+            LensProfile(id = CARDBOARD_DEFAULT_ID, name = "Cardboard defaults", interLensMm = 60f, screenToLensMm = 42f,
                 lensHeightMm = 31f, alignment = VerticalAlignment.BOTTOM,
                 k1 = 0.441f, k2 = 0.156f, halfFovDeg = 40f),
-            LensProfile(id = "preset-cardboard-v2", name = "Cardboard v2（近似）", interLensMm = 63.9f, screenToLensMm = 39.3f,
+            LensProfile(id = CARDBOARD_V2_ID, name = "Cardboard v2 (approx.)", interLensMm = 63.9f, screenToLensMm = 39.3f,
                 lensHeightMm = 31f, alignment = VerticalAlignment.BOTTOM,
                 k1 = 0.34f, k2 = 0.55f, halfFovDeg = 50f),
-            LensProfile(id = "preset-generic-center", name = "通用（螢幕置中）", interLensMm = 63f, screenToLensMm = 40f,
+            LensProfile(id = GENERIC_CENTER_ID, name = "Generic (screen-centered)", interLensMm = 63f, screenToLensMm = 40f,
                 lensHeightMm = 0f, alignment = VerticalAlignment.CENTER,
                 k1 = 0.30f, k2 = 0.20f, halfFovDeg = 50f),
         )

@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.StringRes
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import com.example.vr180.data.ProfileStore
 import com.example.vr180.source.FileSource
 import com.example.vr180.ui.BrowserScreen
@@ -35,13 +37,13 @@ import android.view.MotionEvent
 import com.example.vr180.ui.LensProfilesScreen
 import com.example.vr180.ui.ScreenCalibScreen
 
-enum class Screen(val title: String) {
-    HOME("VR180 Player"),
-    BROWSER("影片"),
-    SCREEN_CALIB("螢幕尺寸校正"),
-    GYRO("陀螺儀檢測"),
-    LENSES("眼鏡設定檔"),
-    KEY_TEST("控制器按鍵測試"),
+enum class Screen(@StringRes val titleRes: Int) {
+    HOME(R.string.app_name),
+    BROWSER(R.string.ui_screen_browser),
+    SCREEN_CALIB(R.string.ui_screen_calib),
+    GYRO(R.string.ui_screen_gyro),
+    LENSES(R.string.ui_screen_lenses),
+    KEY_TEST(R.string.ui_screen_key_test),
 }
 
 class MainActivity : ComponentActivity() {
@@ -80,9 +82,9 @@ private fun App(store: ProfileStore) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (screen == Screen.BROWSER) source?.label.orEmpty() else screen.title) },
+                title = { Text(if (screen == Screen.BROWSER) source?.label.orEmpty() else stringResource(screen.titleRes)) },
                 navigationIcon = {
-                    if (screen != Screen.HOME) TextButton(onClick = { screen = Screen.HOME }) { Text("‹ 返回") }
+                    if (screen != Screen.HOME) TextButton(onClick = { screen = Screen.HOME }) { Text(stringResource(R.string.ui_nav_back)) }
                 },
             )
         },

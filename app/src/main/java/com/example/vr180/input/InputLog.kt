@@ -1,5 +1,6 @@
 package com.example.vr180.input
 
+import android.content.res.Resources
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -7,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.vr180.R
 import kotlin.math.abs
 
 /**
@@ -16,6 +18,9 @@ import kotlin.math.abs
 object InputLog {
     @Volatile var active = false
     val lines = mutableStateListOf<String>()
+
+    /** 紀錄文字用的字串資源，由測試頁開啟時交進來；沒有時不記錄。 */
+    @Volatile var resources: Resources? = null
 
     /** 測試頁目前選的配置，紀錄依它顯示 App 會做什麼。 */
     @Volatile var choice = ControllerChoice.AUTO
@@ -36,17 +41,20 @@ object InputLog {
 
     fun onKey(e: KeyEvent) {
         if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount > 0) return
+        val res = resources ?: return
         e.device?.name?.let { lastDevice = it }
         val name = KeyEvent.keyCodeToString(e.keyCode).removePrefix("KEYCODE_")
         val action = choice.resolve(e.device?.name).map(e.keyCode)
-        val mapped = action?.let { "→ " + ControllerInput.label(it) }
-            ?: if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
-                "→ 交給系統調音量" else "→ App 不認得"
-        val line = "按鍵 $name（${e.keyCode}）$mapped · ${e.device?.name ?: "?"}"
+        val mapped = "→ " + res.getString(
+            action?.let { ControllerInput.label(it) }
+                ?: if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
+                    R.string.ui_log_volume_system else R.string.ui_log_unknown_key,
+        )
+        val line = res.getString(R.string.ui_log_key, name, e.keyCode, mapped, e.device?.name ?: "?")
         // 與 ControllerInput 相同的規則：單手配置下，同一次扳機送出的 A＋R2 只算一次
         if (action == VrAction.TRIGGER && e.keyCode in ControllerInput.TRIGGER_KEYS) {
             if (e.eventTime - lastTriggerAt < ControllerInput.TRIGGER_DEDUP_MS) {
-                add("$line（同一次扳機，只算一次）")
+                add(res.getString(R.string.ui_log_trigger_dedup, line))
                 return
             }
             lastTriggerAt = e.eventTime
@@ -55,13 +63,14 @@ object InputLog {
     }
 
     fun onMotion(e: MotionEvent) {
+        val res = resources ?: return
         val src = e.source
         fun has(s: Int) = (src and s) == s
         if (has(InputDevice.SOURCE_MOUSE) || has(InputDevice.SOURCE_TOUCHPAD)) {
             val now = e.eventTime
             if (now - lastMouseMs > 800) {
                 lastMouseMs = now
-                add("滑鼠／游標移動 → App 不支援，請切到遊戲模式 · ${e.device?.name ?: "?"}")
+                add(res.getString(R.string.ui_log_mouse, e.device?.name ?: "?"))
             }
             return
         }
@@ -78,14 +87,16 @@ object InputLog {
                 if (bucket != 0) {
                     val name = MotionEvent.axisToString(axis).removePrefix("AXIS_")
                     // 播放器只讀左搖桿（X/Y）和十字鍵（HAT_X/HAT_Y）
-                    val use = when (axis) {
-                        MotionEvent.AXIS_X, MotionEvent.AXIS_HAT_X -> if (bucket > 0) "→ 右" else "→ 左"
-                        MotionEvent.AXIS_Y, MotionEvent.AXIS_HAT_Y -> if (bucket > 0) "→ 下" else "→ 上"
+                    val use = "→ " + res.getString(when (axis) {
+                        MotionEvent.AXIS_X, MotionEvent.AXIS_HAT_X ->
+                            if (bucket > 0) R.string.ui_action_right else R.string.ui_action_left
+                        MotionEvent.AXIS_Y, MotionEvent.AXIS_HAT_Y ->
+                            if (bucket > 0) R.string.ui_action_down else R.string.ui_action_up
                         MotionEvent.AXIS_GAS, MotionEvent.AXIS_RTRIGGER,
-                        MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_LTRIGGER -> "→ 扳機按多深，App 只看按鍵，可忽略"
-                        else -> "→ App 不使用"
-                    }
-                    add("搖桿 $name ${if (bucket > 0) "+" else "−"} $use · ${dev.name}")
+                        MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_LTRIGGER -> R.string.ui_log_axis_trigger
+                        else -> R.string.ui_log_axis_unused
+                    })
+                    add(res.getString(R.string.ui_log_axis, name, if (bucket > 0) "+" else "−", use, dev.name))
                 }
             }
         }

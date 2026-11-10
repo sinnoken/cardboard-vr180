@@ -26,7 +26,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.vr180.R
 import com.example.vr180.data.ProfileStore
 
 /** 信用卡／悠遊卡等 ID-1 卡片的國際標準尺寸（ISO/IEC 7810）。 */
@@ -50,7 +52,7 @@ fun ScreenCalibScreen(store: ProfileStore) {
     val pxPerMm = systemPxPerMm * scale
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("把一張信用卡（或悠遊卡）直放貼在框上，調整到框線剛好貼齊卡片四邊。")
+        Text(stringResource(R.string.ui_calib_hint))
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Canvas(Modifier.fillMaxSize()) {
                 val w = CARD_W_MM * pxPerMm
@@ -62,16 +64,16 @@ fun ScreenCalibScreen(store: ProfileStore) {
                 drawLine(accent.copy(alpha = 0.4f), Offset(tl.x, size.height / 2), Offset(tl.x + w, size.height / 2))
             }
         }
-        Text("%.3f 像素/mm（系統回報 %.3f）".format(pxPerMm, systemPxPerMm),
+        Text(stringResource(R.string.ui_calib_value, pxPerMm, systemPxPerMm),
             style = MaterialTheme.typography.bodySmall)
         Slider(value = scale, onValueChange = { scale = it; saved = false }, valueRange = 0.85f..1.15f)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { scale -= 0.001f; saved = false }) { Text("縮小一點") }
-            OutlinedButton(onClick = { scale += 0.001f; saved = false }) { Text("放大一點") }
+            OutlinedButton(onClick = { scale -= 0.001f; saved = false }) { Text(stringResource(R.string.ui_calib_smaller)) }
+            OutlinedButton(onClick = { scale += 0.001f; saved = false }) { Text(stringResource(R.string.ui_calib_larger)) }
             Button(onClick = {
                 store.saveDevice(store.loadDevice().copy(pxPerMm = pxPerMm))
                 saved = true
-            }) { Text(if (saved) "已儲存" else "儲存") }
+            }) { Text(stringResource(if (saved) R.string.ui_saved else R.string.ui_save)) }
         }
     }
 }

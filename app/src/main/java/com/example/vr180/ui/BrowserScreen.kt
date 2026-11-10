@@ -30,14 +30,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.vr180.PlayerActivity
+import com.example.vr180.R
 import com.example.vr180.data.ProfileStore
 import com.example.vr180.player.Playlist
 import com.example.vr180.data.ProfileStore.BrowseOptions
 import com.example.vr180.data.ProfileStore.BrowseSort
 import com.example.vr180.source.FileSource
 import com.example.vr180.source.FsEntry
+import com.example.vr180.source.ORIGINAL_LABEL
 import com.example.vr180.source.parseVariant
 import com.example.vr180.source.variantRank
 import kotlinx.coroutines.CancellationException
@@ -188,7 +191,7 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            error = friendlyError(e)
+            error = friendlyError(context, e)
         }
         loading = false
     }
@@ -202,8 +205,13 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
             Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("排序", style = MaterialTheme.typography.bodyMedium)
-            listOf(BrowseSort.NAME to "名稱", BrowseSort.DATE to "日期", BrowseSort.SIZE to "大小").forEach { (s, label) ->
+            Text(stringResource(R.string.ui_browser_sort), style = MaterialTheme.typography.bodyMedium)
+            listOf(
+                BrowseSort.NAME to R.string.ui_sort_name,
+                BrowseSort.DATE to R.string.ui_sort_date,
+                BrowseSort.SIZE to R.string.ui_sort_size,
+            ).forEach { (s, labelRes) ->
+                val label = stringResource(labelRes)
                 val selected = opt.sort == s
                 // 再點一次已選的排序就切換升降；換排序時用那種排序的預設方向
                 FilterChip(
@@ -220,39 +228,39 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
             FilterChip(
                 selected = opt.includeSubfolders,
                 onClick = { update(opt.copy(includeSubfolders = !opt.includeSubfolders)) },
-                label = { Text("包含子資料夾") },
+                label = { Text(stringResource(R.string.ui_browser_include_subfolders)) },
             )
             FilterChip(
                 selected = opt.hideSmall,
                 onClick = { update(opt.copy(hideSmall = !opt.hideSmall)) },
-                label = { Text("隱藏小於 100 MB") },
+                label = { Text(stringResource(R.string.ui_browser_hide_small)) },
             )
         }
         when {
             loading -> Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 CircularProgressIndicator()
-                if (opt.includeSubfolders && scanned > 0) Text("已讀取 $scanned 個資料夾…")
+                if (opt.includeSubfolders && scanned > 0) Text(stringResource(R.string.ui_browser_scanned, scanned))
             }
             error != null -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("讀取失敗：$error", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.ui_browser_load_failed, error.orEmpty()), color = MaterialTheme.colorScheme.error)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { reload++ }) { Text("重試") }
-                    if (stack.size > 1) OutlinedButton(onClick = { stack = stack.dropLast(1) }) { Text("上一層") }
+                    OutlinedButton(onClick = { reload++ }) { Text(stringResource(R.string.ui_retry)) }
+                    if (stack.size > 1) OutlinedButton(onClick = { stack = stack.dropLast(1) }) { Text(stringResource(R.string.ui_browser_up)) }
                 }
             }
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 if (stack.size > 1) item {
-                    ListItem(headlineContent = { Text("‹ 上一層") },
+                    ListItem(headlineContent = { Text(stringResource(R.string.ui_browser_up_row)) },
                         modifier = Modifier.fillMaxWidth().clickable { stack = stack.dropLast(1) })
                     HorizontalDivider()
                 }
                 if (listing.skippedDirs > 0) item {
-                    Text("有 ${listing.skippedDirs} 個子資料夾讀不到，已略過。", Modifier.padding(16.dp),
+                    Text(stringResource(R.string.ui_browser_skipped, listing.skippedDirs), Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
                 if (listing.rows.none { it is ListRow.Video }) item {
                     Text(
-                        "這裡沒有影片" + if (opt.hideSmall) "（已隱藏小於 100 MB 的影片）。" else "。",
+                        stringResource(if (opt.hideSmall) R.string.ui_browser_empty_hidden else R.string.ui_browser_empty),
                         Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -265,8 +273,10 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
                         is ListRow.Video -> ListItem(
                             headlineContent = { Text(row.base) },
                             supportingContent = {
+                                // ORIGINAL_LABEL 是內部排序用的鍵，顯示時換成依語言的字串
+                                val original = stringResource(R.string.ui_variant_original)
                                 val info = listOfNotNull(
-                                    row.variants.joinToString(" · ") { it.first },
+                                    row.variants.joinToString(" · ") { if (it.first == ORIGINAL_LABEL) original else it.first },
                                     formatDate(row.modifiedMs),
                                     formatSize(row.size),
                                 ).joinToString("　")

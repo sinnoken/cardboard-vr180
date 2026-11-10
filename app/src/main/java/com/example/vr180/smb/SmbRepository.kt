@@ -52,8 +52,8 @@ object SmbRepository {
     }
 
     @Synchronized fun share(host: String, shareName: String): DiskShare {
-        val c = conn ?: error("尚未設定 NAS 連線")
-        check(host.equals(c.host, ignoreCase = true)) { "沒有 $host 的登入資訊" }
+        val c = conn ?: error("NAS connection not configured")
+        check(host.equals(c.host, ignoreCase = true)) { "No credentials for $host" }
         shares[shareName]?.let { if (it.isConnected) return it }
 
         val cn = connection?.takeIf { it.isConnected } ?: run {
@@ -113,9 +113,9 @@ object SmbRepository {
             .path("/" + shareName + "/" + path.trim('/')).build()
 
     private fun parse(uri: Uri): Triple<String, String, String> {
-        val host = uri.host ?: error("無效的 SMB 位址：$uri")
+        val host = uri.host ?: error("Invalid SMB URI: $uri")
         val segs = uri.pathSegments
-        require(segs.size >= 2) { "無效的 SMB 位址：$uri" }
+        require(segs.size >= 2) { "Invalid SMB URI: $uri" }
         return Triple(host, segs[0], segs.drop(1).joinToString("/"))
     }
 

@@ -105,7 +105,7 @@ class ProfileStore(context: Context) {
 
     /** 更新（或新增）一個設定檔並設為使用中。預設檔不可修改，呼叫端需先另存成新 id。 */
     @Synchronized fun upsertActive(p: LensProfile) {
-        require(!p.isPreset) { "預設檔不可修改" }
+        require(!p.isPreset) { "Preset profiles are read-only" }
         val cur = loadLenses()
         val list = if (cur.profiles.any { it.id == p.id })
             cur.profiles.map { if (it.id == p.id) p else it } else cur.profiles + p

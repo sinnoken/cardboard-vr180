@@ -30,13 +30,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.vr180.R
 import com.example.vr180.Screen
 import com.example.vr180.data.ProfileStore
 import com.example.vr180.model.LensProfile
 import com.example.vr180.model.SmbConnection
+import com.example.vr180.model.displayName
 import com.example.vr180.smb.LocalNetworkPermission
 import com.example.vr180.smb.SmbRepository
 import com.example.vr180.source.FileSource
@@ -71,13 +74,13 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
             }
             busy = false
             r.onSuccess { openSource(SmbFileSource(c)) }
-                .onFailure { error = "連線失敗：" + friendlyError(it) }
+                .onFailure { error = context.getString(R.string.ui_home_connect_failed, friendlyError(context, it)) }
         }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) connect()
-        else error = "需要「附近裝置／區域網路」權限才能連到 NAS。可到系統設定 › 應用程式 › VR180 Player › 權限 開啟。"
+        else error = context.getString(R.string.ui_home_permission_needed)
     }
 
     var folders by remember { mutableStateOf(store.loadFolders()) }
@@ -102,16 +105,16 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
         Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("NAS 連線（SMB）", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.ui_home_nas_title), style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(host, { host = it.trim() }, Modifier.fillMaxWidth(),
-            label = { Text("主機（IP 或名稱）") }, singleLine = true,
+            label = { Text(stringResource(R.string.ui_home_host)) }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
         OutlinedTextField(share, { share = it.trim() }, Modifier.fillMaxWidth(),
-            label = { Text("共用資料夾") }, singleLine = true)
+            label = { Text(stringResource(R.string.ui_home_share)) }, singleLine = true)
         OutlinedTextField(user, { user = it }, Modifier.fillMaxWidth(),
-            label = { Text("帳號（空白 = 訪客）") }, singleLine = true)
+            label = { Text(stringResource(R.string.ui_home_user)) }, singleLine = true)
         OutlinedTextField(pass, { pass = it }, Modifier.fillMaxWidth(),
-            label = { Text("密碼") }, singleLine = true,
+            label = { Text(stringResource(R.string.ui_home_password)) }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
         Button(
@@ -121,13 +124,13 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
                 if (LocalNetworkPermission.granted(context)) connect()
                 else permissionLauncher.launch(LocalNetworkPermission.NAME)
             },
-        ) { Text(if (busy) "連線中…" else "連線並瀏覽") }
+        ) { Text(stringResource(if (busy) R.string.ui_home_connecting else R.string.ui_home_connect)) }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         Spacer(Modifier.height(8.dp))
-        Text("本機資料夾", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.ui_home_local_title), style = MaterialTheme.typography.titleMedium)
         Text(
-            "手機儲存空間、SD 卡、USB 隨身碟都可以。只授權選定的資料夾，不需要儲存權限，也不用網路。",
+            stringResource(R.string.ui_home_local_hint),
             style = MaterialTheme.typography.bodySmall,
         )
         folders.forEach { f ->
@@ -136,7 +139,7 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
                     Text("📁 ${f.name}", Modifier.weight(1f))
                     TextButton(onClick = {
                         openSource(LocalFileSource(context, Uri.parse(f.uri), f.name))
-                    }) { Text("開啟") }
+                    }) { Text(stringResource(R.string.ui_open)) }
                     TextButton(onClick = {
                         runCatching {
                             context.contentResolver.releasePersistableUriPermission(Uri.parse(f.uri),
@@ -144,44 +147,41 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
                         }
                         store.saveFolders(folders.filter { it.uri != f.uri })
                         folders = store.loadFolders()
-                    }) { Text("移除") }
+                    }) { Text(stringResource(R.string.ui_remove)) }
                 }
             }
         }
         OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { pickFolder.launch(null) }) {
-            Text("新增本機資料夾")
+            Text(stringResource(R.string.ui_home_add_folder))
         }
 
         Spacer(Modifier.height(8.dp))
-        Text("設定（都可以跳過，直接看片）", style = MaterialTheme.typography.titleMedium)
-        SetupCard("1. 螢幕尺寸校正（選用）",
-            if (device.pxPerMm > 0f) "已校正（%.2f 像素/mm）".format(device.pxPerMm)
-            else "未校正：使用手機回報的螢幕密度，通常已經夠準。戴上後眼距或位置明顯不對再來做。",
+        Text(stringResource(R.string.ui_home_setup_title), style = MaterialTheme.typography.titleMedium)
+        SetupCard(stringResource(R.string.ui_home_calib_title),
+            if (device.pxPerMm > 0f) stringResource(R.string.ui_home_calib_done, device.pxPerMm)
+            else stringResource(R.string.ui_home_calib_none),
         ) { navigate(Screen.SCREEN_CALIB) }
         // 漂移的預設值是 0；實際量測幾乎不可能剛好是 0.0，所以 0 就代表還沒檢測過
-        val drift = if (device.yawDriftDegPerSec == 0f) "漂移尚未檢測"
-            else "漂移 %.2f°/分".format(device.yawDriftDegPerSec * 60f)
-        SetupCard("2. 陀螺儀檢測（選用）",
-            "$drift · 預測 %.0f ms。看片時正前方會慢慢跑掉再做；平常長按畫面重新置中就好。"
-                .format(device.predictionMs),
+        val drift = if (device.yawDriftDegPerSec == 0f) stringResource(R.string.ui_home_drift_none)
+            else stringResource(R.string.ui_home_drift, device.yawDriftDegPerSec * 60f)
+        SetupCard(stringResource(R.string.ui_home_gyro_title),
+            stringResource(R.string.ui_home_gyro_detail, drift, device.predictionMs),
         ) { navigate(Screen.GYRO) }
         val usingDefault = lens.id == LensProfile.CARDBOARD_DEFAULT_ID
         SetupCard(
-            "3. 眼鏡設定檔（可跳過）",
-            if (usingDefault)
-                "使用中：Cardboard 預設值，可直接跳過這步。" +
-                    "戴上眼鏡後在播放選單的『鏡片校正』裡微調即可。"
-            else "使用中：${lens.name}",
-            buttonText = "選其他設定檔",
-            secondaryText = if (usingDefault) null else "改用 Cardboard 預設值",
+            stringResource(R.string.ui_home_lens_title),
+            if (usingDefault) stringResource(R.string.ui_home_lens_default)
+            else stringResource(R.string.ui_home_lens_in_use, lens.displayName(context)),
+            buttonText = stringResource(R.string.ui_home_lens_choose),
+            secondaryText = if (usingDefault) null else stringResource(R.string.ui_home_lens_use_default),
             onSecondary = {
                 store.activate(LensProfile.CARDBOARD_DEFAULT_ID)
                 lens = store.loadLenses().active
             },
         ) { navigate(Screen.LENSES) }
         SetupCard(
-            "4. 控制器按鍵測試（選用）",
-            "藍芽控制器按了沒反應時，用這頁看它送出什麼訊號。",
+            stringResource(R.string.ui_home_keytest_title),
+            stringResource(R.string.ui_home_keytest_detail),
         ) { navigate(Screen.KEY_TEST) }
     }
 }
@@ -190,7 +190,7 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
 private fun SetupCard(
     title: String,
     detail: String,
-    buttonText: String = "開啟",
+    buttonText: String? = null,              // null = 「開啟」
     secondaryText: String? = null,
     onSecondary: () -> Unit = {},
     onClick: () -> Unit,
@@ -200,7 +200,7 @@ private fun SetupCard(
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(detail, style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onClick) { Text(buttonText) }
+                OutlinedButton(onClick = onClick) { Text(buttonText ?: stringResource(R.string.ui_open)) }
                 secondaryText?.let { TextButton(onClick = onSecondary) { Text(it) } }
             }
         }

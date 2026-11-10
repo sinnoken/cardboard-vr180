@@ -62,9 +62,9 @@ class SidecarIo(context: Context) {
                     DocumentsContract.buildDocumentUriUsingTree(tree, ref.parentId),
                     "application/json",
                     ref.name,
-                ) ?: throw IOException("無法建立 ${ref.name}")
+                ) ?: throw IOException("Cannot create ${ref.name}")
                 resolver.openOutputStream(target, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
-                    ?: throw IOException("無法寫入 ${ref.name}")
+                    ?: throw IOException("Cannot write ${ref.name}")
             }
         }
     }

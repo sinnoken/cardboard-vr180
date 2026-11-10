@@ -6,6 +6,8 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import androidx.annotation.StringRes
+import com.example.vr180.R
 import kotlin.math.abs
 
 /** 播放器層級的動作，與實際按鍵無關。 */
@@ -125,14 +127,17 @@ class ControllerInput(
         val TRIGGER_KEYS = setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_R2)
         private val REPEATABLE = setOf(VrAction.UP, VrAction.DOWN, VrAction.LEFT, VrAction.RIGHT)
 
-        /** 按鍵測試頁用的中文名稱。 */
-        fun label(a: VrAction): String = when (a) {
-            VrAction.UP -> "上"; VrAction.DOWN -> "下"; VrAction.LEFT -> "左"; VrAction.RIGHT -> "右"
-            VrAction.SELECT -> "選取"; VrAction.BACK -> "返回"; VrAction.MENU -> "開關選單"
-            VrAction.RECENTER -> "重新置中"; VrAction.PLAY_PAUSE -> "播放/暫停"
-            VrAction.SEEK_BACK -> "倒退 10 秒"; VrAction.SEEK_FWD -> "快轉 10 秒"
-            VrAction.TRIGGER -> "選單開著＝選取，關著＝播放/暫停"
-            VrAction.VOL_UP -> "音量＋"; VrAction.VOL_DOWN -> "音量－"
+        /** 按鍵測試頁顯示的動作名稱（字串資源 id，由畫面端依語言取字串）。 */
+        @StringRes
+        fun label(a: VrAction): Int = when (a) {
+            VrAction.UP -> R.string.ui_action_up; VrAction.DOWN -> R.string.ui_action_down
+            VrAction.LEFT -> R.string.ui_action_left; VrAction.RIGHT -> R.string.ui_action_right
+            VrAction.SELECT -> R.string.ui_action_select; VrAction.BACK -> R.string.ui_action_back
+            VrAction.MENU -> R.string.ui_action_menu
+            VrAction.RECENTER -> R.string.ui_action_recenter; VrAction.PLAY_PAUSE -> R.string.ui_action_play_pause
+            VrAction.SEEK_BACK -> R.string.ui_action_seek_back; VrAction.SEEK_FWD -> R.string.ui_action_seek_fwd
+            VrAction.TRIGGER -> R.string.ui_action_trigger
+            VrAction.VOL_UP -> R.string.ui_action_vol_up; VrAction.VOL_DOWN -> R.string.ui_action_vol_down
         }
     }
 }

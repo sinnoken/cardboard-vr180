@@ -27,14 +27,14 @@ class RoutingDataSource(context: Context) : DataSource {
         val d = when (dataSpec.uri.scheme) {
             "smb" -> smb
             "content" -> content
-            else -> throw IOException("不支援的位址：${dataSpec.uri}")
+            else -> throw IOException("Unsupported URI: ${dataSpec.uri}")
         }
         active = d
         return d.open(dataSpec)
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
-        active?.read(buffer, offset, length) ?: throw IOException("資料來源尚未開啟")
+        active?.read(buffer, offset, length) ?: throw IOException("Data source not opened")
 
     override fun getUri(): Uri? = active?.uri
 

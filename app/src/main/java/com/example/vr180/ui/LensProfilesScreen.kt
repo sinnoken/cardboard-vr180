@@ -20,14 +20,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.example.vr180.R
 import com.example.vr180.data.ProfileStore
 import com.example.vr180.model.LensProfile
 import com.example.vr180.model.VerticalAlignment
+import com.example.vr180.model.displayName
 
 @Composable
 fun LensProfilesScreen(store: ProfileStore, onDone: () -> Unit) {
     var lenses by remember { mutableStateOf(store.loadLenses()) }
+    val context = LocalContext.current
 
     fun reload() { lenses = store.loadLenses() }
 
@@ -35,17 +40,14 @@ fun LensProfilesScreen(store: ProfileStore, onDone: () -> Unit) {
         Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            "這裡只是選一個起點。不論從哪裡開始，戴上眼鏡後都要在播放選單的『鏡片校正』裡微調，" +
-                "最後的準確度一樣。"
-        )
+        Text(stringResource(R.string.ui_lens_intro))
 
         Button(modifier = Modifier.fillMaxWidth(), onClick = {
             store.activate(LensProfile.CARDBOARD_DEFAULT_ID)
             onDone()
-        }) { Text("使用 Cardboard 預設值") }
+        }) { Text(stringResource(R.string.ui_lens_use_default)) }
 
-        Text("設定檔", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(R.string.ui_lens_profiles), style = MaterialTheme.typography.titleSmall)
         lenses.profiles.forEach { p ->
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -54,13 +56,16 @@ fun LensProfilesScreen(store: ProfileStore, onDone: () -> Unit) {
                     })
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (p.isPreset) "${p.name}（預設）" else p.name,
+                            if (p.isPreset) stringResource(R.string.ui_lens_preset_name, p.displayName(context))
+                            else p.displayName(context),
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Text(
-                            "鏡片間距 %.1f · 螢幕到鏡片 %.1f · 中心 %s · k1 %.2f k2 %.2f".format(
+                            stringResource(
+                                R.string.ui_lens_detail,
                                 p.interLensMm, p.screenToLensMm,
-                                if (p.alignment == VerticalAlignment.CENTER) "置中" else "%.1f mm".format(p.lensHeightMm),
+                                if (p.alignment == VerticalAlignment.CENTER) stringResource(R.string.ui_lens_center_centered)
+                                else "%.1f mm".format(p.lensHeightMm),
                                 p.k1, p.k2,
                             ),
                             style = MaterialTheme.typography.bodySmall,
@@ -72,7 +77,7 @@ fun LensProfilesScreen(store: ProfileStore, onDone: () -> Unit) {
                             store.saveLenses(lenses.copy(profiles = lenses.profiles.filter { it.id != p.id }))
                             reload()
                         },
-                    ) { Text("刪除") }
+                    ) { Text(stringResource(R.string.ui_delete)) }
                 }
             }
         }

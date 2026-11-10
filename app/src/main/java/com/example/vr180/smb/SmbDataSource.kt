@@ -66,7 +66,7 @@ class SmbDataSource : BaseDataSource(/* isNetwork = */ true) {
     }
 
     private fun fillChunk() {
-        val f = file ?: throw IOException("檔案尚未開啟")
+        val f = file ?: throw IOException("File not opened")
         chunkStart = position
         var filled = 0
         try {

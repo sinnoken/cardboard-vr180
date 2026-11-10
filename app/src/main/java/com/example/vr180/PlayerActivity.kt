@@ -37,6 +37,7 @@ import com.example.vr180.input.VrAction
 import com.example.vr180.model.LensProfile
 import com.example.vr180.model.SceneCalib
 import com.example.vr180.model.VerticalAlignment
+import com.example.vr180.model.displayName
 import com.example.vr180.player.HardwareOnly
 import com.example.vr180.player.Playlist
 import com.example.vr180.player.changeLensAlignment
@@ -50,6 +51,7 @@ import com.example.vr180.render.VrRenderer
 import com.example.vr180.smb.LocalNetworkPermission
 import com.example.vr180.smb.SmbRepository
 import com.example.vr180.player.RoutingDataSource
+import com.example.vr180.source.ORIGINAL_LABEL
 import com.example.vr180.source.SidecarIo
 import com.example.vr180.source.SidecarRef
 import com.example.vr180.tracking.HeadTracker
@@ -106,7 +108,7 @@ class PlayerActivity : ComponentActivity() {
     @Volatile private var playing = false
     @Volatile private var decoderName = "—"
     @Volatile private var videoSize = "—"
-    @Volatile private var controllerName = "未連線"
+    @Volatile private var controllerName = ""
     @Volatile private var message = ""
     @Volatile private var playerFailed = false      // 播放錯誤：主選單的播放鍵變成「重試」
     @Volatile private var playerEnded = false       // 播完：播放鍵變成「重播」
@@ -193,12 +195,12 @@ class PlayerActivity : ComponentActivity() {
         watchControllers()
 
         if (!tracker.available) {
-            message = "這支手機找不到頭部追蹤感測器，畫面不會跟著轉頭"
+            message = getString(R.string.player_no_head_tracking)
         }
         // 程序被系統回收後直接回到播放器時，SmbRepository 是空的；不設定就會被當成「連不到 NAS」
         if (uris.any { it.startsWith("smb:") }) SmbRepository.configure(store.loadConnection())
         if (uris.any { it.startsWith("smb:") } && !LocalNetworkPermission.granted(this)) {
-            message = "缺少區域網路權限，無法讀取 NAS。請回主畫面重新連線以授權。"
+            message = getString(R.string.player_no_local_network_permission)
         }
         loadScene()
         createPlayer()
@@ -396,8 +398,9 @@ class PlayerActivity : ComponentActivity() {
                         d.supportsSource(InputDevice.SOURCE_DPAD) ||
                         d.supportsSource(InputDevice.SOURCE_KEYBOARD))
                 }
-                .map { "${it.name}（${controllerChoice.resolve(it.name).label}）" }.distinct()
-            controllerName = if (names.isEmpty()) "未連線" else names.joinToString("、")
+                .map { getString(R.string.player_controller_device, it.name, getString(controllerChoice.resolve(it.name).labelRes)) }.distinct()
+            controllerName = if (names.isEmpty()) getString(R.string.player_not_connected)
+                else names.joinToString(getString(R.string.player_list_separator))
             refreshStatus()
         }
         val l = object : InputManager.InputDeviceListener {
@@ -438,10 +441,10 @@ class PlayerActivity : ComponentActivity() {
                     tracks.isTypeSupported(C.TRACK_TYPE_VIDEO, /* allowExceedsCapabilities = */ false)
                 ) return
                 if (isLastVariant()) {
-                    message = "超出硬體解碼器宣告的能力，仍嘗試播放"
+                    message = getString(R.string.player_exceeds_decoder)
                     refreshStatus()
                 } else {
-                    fallback("硬體解碼器宣告不支援此解析度或格式")
+                    fallback(getString(R.string.player_decoder_unsupported))
                 }
             }
 
@@ -528,13 +531,14 @@ class PlayerActivity : ComponentActivity() {
         if (failedVariant == variantIndex) return
         failedVariant = variantIndex
         if (variantIndex + 1 < uris.size) {
-            message = "${labels.getOrElse(variantIndex) { "此版本" }} 無法硬解（$reason），改播較低解析度"
+            val label = labels.getOrNull(variantIndex)?.let { variantLabel(it) } ?: getString(R.string.player_this_variant)
+            message = getString(R.string.player_fallback_variant, label, reason)
             // 播到一半才失敗（過熱、暫時性錯誤）時從原位置接著播，不回到片頭
             val pos = player?.currentPosition ?: 0L
             playVariant(variantIndex + 1, keepFrame = true)
             if (pos > 0) player?.seekTo(pos)
         } else {
-            message = "這支手機無法硬體解碼這支影片的任何版本（$reason）。請轉成較低解析度，例如 5.7K。"
+            message = getString(R.string.player_no_variant_decodable, reason)
             playerFailed = true
             player?.stop()
             refreshStatus()
@@ -557,15 +561,18 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    private fun playbackErrorText(e: PlaybackException): String = when (e.errorCode) {
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "連不到 NAS（網路中斷或 NAS 關機）"
-        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "NAS 回應逾時，網路可能太慢或不穩"
-        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "找不到影片檔，可能已被移動或刪除"
-        PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> "沒有讀取這個檔案的權限"
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "影片檔損壞或格式不支援"
-        else -> "播放錯誤（${e.errorCodeName}）"
-    } + "。可以按「重試」。"
+    private fun playbackErrorText(e: PlaybackException): String {
+        val reason = when (e.errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> getString(R.string.player_error_network)
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> getString(R.string.player_error_timeout)
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> getString(R.string.player_error_not_found)
+            PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> getString(R.string.player_error_no_permission)
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> getString(R.string.player_error_bad_file)
+            else -> getString(R.string.player_error_generic, e.errorCodeName)
+        }
+        return getString(R.string.player_error_retry_hint, reason)
+    }
 
     /** 主執行緒：切到清單裡的上一支（-1）或下一支（+1）。 */
     private fun switchVideo(d: Int) {
@@ -573,9 +580,9 @@ class PlayerActivity : ComponentActivity() {
         val i = playlistIndex + d
         if (playlistIndex < 0 || i !in items.indices) {
             message = when {
-                playlistIndex < 0 -> "沒有影片清單，請從清單重新開啟"
-                d > 0 -> "已經是最後一支"
-                else -> "已經是第一支"
+                playlistIndex < 0 -> getString(R.string.player_no_playlist)
+                d > 0 -> getString(R.string.player_last_video)
+                else -> getString(R.string.player_first_video)
             }
             refreshStatus()
             return
@@ -610,7 +617,7 @@ class PlayerActivity : ComponentActivity() {
         player?.seekTo(pos)
         seekTarget = pos
         posMs = pos
-        message = "從 ${fmtTime(pos)} 繼續"
+        message = getString(R.string.player_resuming_at, fmtTime(pos))
         refreshStatus()
     }
 
@@ -618,7 +625,11 @@ class PlayerActivity : ComponentActivity() {
     private fun adjustVolume(direction: Int) {
         val am = getSystemService(AUDIO_SERVICE) as AudioManager
         am.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
-        message = "音量 ${am.getStreamVolume(AudioManager.STREAM_MUSIC)} / ${am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}"
+        message = getString(
+            R.string.player_volume,
+            am.getStreamVolume(AudioManager.STREAM_MUSIC),
+            am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+        )
         refreshStatus()
     }
 
@@ -647,16 +658,16 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun refreshStatus() {
-        val label = labels.getOrElse(variantIndex) { "" }
+        val label = variantLabel(labels.getOrElse(variantIndex) { "" })
         // 最重要的放前面：面板文字最多 5 行，超過的會被截掉
         menu.status = buildString {
             if (message.isNotBlank()) append(message).append('\n')
             append(fmtTime(posMs)).append(" / ").append(if (durMs > 0) fmtTime(durMs) else "--:--")
-            if (buffering) append(" · 載入中…")
-            if (label.isNotBlank()) append(" · $label（${variantIndex + 1}/${uris.size}）")
-            append(" · $videoSize · 解碼器 $decoderName")
-            append("\n控制器：$controllerName")
-            if (::renderer.isInitialized && renderer.scene != SceneCalib()) append(" · 已套用這支影片的校正")
+            if (buffering) append(" · ").append(getString(R.string.player_status_loading))
+            if (label.isNotBlank()) append(" · ").append(getString(R.string.player_status_variant, label, variantIndex + 1, uris.size))
+            append(" · $videoSize · ").append(getString(R.string.player_status_decoder, decoderName))
+            append('\n').append(getString(R.string.player_status_controller, controllerName))
+            if (::renderer.isInitialized && renderer.scene != SceneCalib()) append(" · ").append(getString(R.string.player_status_scene_applied))
         }
         if (::glView.isInitialized) glView.queueEvent { menu.invalidate() }
     }
@@ -682,9 +693,12 @@ class PlayerActivity : ComponentActivity() {
         io.execute {
             store.saveScene(sceneKey, s)
             val sc = sidecar
-            message = if (sc == null) "這支影片的校正已存在手機" else runCatching {
+            message = if (sc == null) getString(R.string.player_scene_saved_phone) else runCatching {
                 sidecarIo.write(sc, s.toJson().toString(2))
-            }.fold({ "這支影片的校正已存到手機與影片資料夾" }, { "影片資料夾無法寫入，校正只存在手機" })
+            }.fold(
+                { getString(R.string.player_scene_saved_both) },
+                { getString(R.string.player_scene_saved_phone_only) },
+            )
             runOnUiThread { refreshStatus() }
         }
     }
@@ -705,7 +719,7 @@ class PlayerActivity : ComponentActivity() {
             scenePage, sceneAdvancedPage, aimPage -> sceneBeforeEdit?.let { renderer.scene = it }
             else -> return
         }
-        message = "校正沒有儲存，已還原"
+        message = getString(R.string.player_calib_discarded)
         runOnUiThread { refreshStatus() }
     }
 
@@ -713,9 +727,9 @@ class PlayerActivity : ComponentActivity() {
 
     private val startPage: MenuPage by lazy {
         MenuPage(
-            title = { videoTitle.ifBlank { "VR180 播放器" } },
-            hint = { "戴好眼鏡、看向正前方，按任意鍵或點一下螢幕開始播放。" },
-            rows = listOf(listOf(MenuItem.Button({ "開始播放" }) { startPlayback() })),
+            title = { videoTitle.ifBlank { getString(R.string.player_app_title) } },
+            hint = { getString(R.string.player_start_hint) },
+            rows = listOf(listOf(MenuItem.Button({ getString(R.string.player_start) }) { startPlayback() })),
             onBack = { runOnUiThread { finish() } },
             showStatus = true,
         )
@@ -734,20 +748,20 @@ class PlayerActivity : ComponentActivity() {
 
     private val mainPage: MenuPage by lazy {
         MenuPage(
-            title = { videoTitle.ifBlank { "VR180 播放器" } },
-            hint = { "沒有控制器：看著項目點螢幕；看別處點一下關閉選單；長按畫面重新置中。" },
+            title = { videoTitle.ifBlank { getString(R.string.player_app_title) } },
+            hint = { getString(R.string.player_main_hint) },
             rows = listOf(
                 listOf(
                     MenuItem.Button({
                         when {
-                            playerFailed -> "重試"
-                            playerEnded -> "重播"
-                            playing -> "暫停"
-                            else -> "播放"
+                            playerFailed -> getString(R.string.player_retry)
+                            playerEnded -> getString(R.string.player_replay)
+                            playing -> getString(R.string.player_pause)
+                            else -> getString(R.string.player_play)
                         }
                     }) { runOnUiThread { playButton() } },
-                    MenuItem.Button({ "−10 秒" }) { runOnUiThread { seekBy(-10_000) } },
-                    MenuItem.Button({ "+10 秒" }) { runOnUiThread { seekBy(10_000) } },
+                    MenuItem.Button({ getString(R.string.player_seek_back_10s) }) { runOnUiThread { seekBy(-10_000) } },
+                    MenuItem.Button({ getString(R.string.player_seek_fwd_10s) }) { runOnUiThread { seekBy(10_000) } },
                 ),
                 // 進度列放在播放鍵下面：打開選單時焦點仍在播放鍵，按確認不會誤跳
                 listOf(
@@ -768,9 +782,9 @@ class PlayerActivity : ComponentActivity() {
                     ),
                 ),
                 listOf(
-                    MenuItem.Button({ "重新置中" }) { tracker.recenter(); replaceMenu = true },
-                    MenuItem.Button({ "設定…" }) { menu.open(settingsPage) },
-                    MenuItem.Button({ "離開播放" }) { runOnUiThread { finish() } },
+                    MenuItem.Button({ getString(R.string.player_recenter) }) { tracker.recenter(); replaceMenu = true },
+                    MenuItem.Button({ getString(R.string.player_settings) }) { menu.open(settingsPage) },
+                    MenuItem.Button({ getString(R.string.player_exit) }) { runOnUiThread { finish() } },
                 ),
             ),
             onBack = { closeMenu() },
@@ -780,18 +794,15 @@ class PlayerActivity : ComponentActivity() {
 
     private val settingsPage: MenuPage by lazy {
         MenuPage(
-            title = { "設定" },
-            hint = {
-                "鏡片校正：換眼鏡或手機時做一次。這支影片的校正：只有這支片拍歪時才需要。" +
-                    "置中方式：坐著、站著用「只轉水平」；躺著、側躺用「全方向」，換姿勢後再置中一次。"
-            },
+            title = { getString(R.string.player_settings_title) },
+            hint = { getString(R.string.player_settings_hint) },
             rows = listOf(
-                listOf(MenuItem.Button({ "鏡片校正" }) { openLens() }),
-                listOf(MenuItem.Button({ "這支影片的校正" }) { openScene() }),
+                listOf(MenuItem.Button({ getString(R.string.player_lens_calibration) }) { openLens() }),
+                listOf(MenuItem.Button({ getString(R.string.player_video_calibration) }) { openScene() }),
                 listOf(MenuItem.Button({
-                    if (tracker.fullRecenter) "置中方式：全方向" else "置中方式：只轉水平"
+                    getString(if (tracker.fullRecenter) R.string.player_recenter_full else R.string.player_recenter_horizontal)
                 }) { toggleFullRecenter() }),
-                listOf(MenuItem.Button({ "返回" }) { menu.open(mainPage) }),
+                listOf(MenuItem.Button({ getString(R.string.player_back) }) { menu.open(mainPage) }),
             ),
             onBack = { menu.open(mainPage) },
         )
@@ -818,7 +829,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun openScene() {
         if (!sceneLoaded) {
-            message = "這支影片的校正還在讀取，請稍候再試"
+            message = getString(R.string.player_scene_loading)
             runOnUiThread { refreshStatus() }
             return
         }
@@ -839,27 +850,24 @@ class PlayerActivity : ComponentActivity() {
 
     private val scenePage: MenuPage by lazy {
         MenuPage(
-            title = { "這支影片的校正" },
-            hint = {
-                "畫面中的主角或地平線不在正前方：按『設定正前方』。地平線左右歪：調『地平線』，" +
-                    "讓影片的地平線對齊紅色水平線。"
-            },
+            title = { getString(R.string.player_video_calibration) },
+            hint = { getString(R.string.player_scene_hint) },
             rows = listOf(
-                listOf(MenuItem.Button({ "設定正前方（看著目標點一下）" }) {
+                listOf(MenuItem.Button({ getString(R.string.player_set_forward_aim) }) {
                     aiming = true
                     menu.open(aimPage)
                 }),
-                listOf(sceneStep("地平線", 0.2f, { it.rollDeg }) { s, v -> s.copy(rollDeg = v) }),
+                listOf(sceneStep(getString(R.string.player_horizon), 0.2f, { it.rollDeg }) { s, v -> s.copy(rollDeg = v) }),
                 listOf(
-                    MenuItem.Button({ "進階…" }) { menu.open(sceneAdvancedPage) },
-                    MenuItem.Button({ if (renderer.guide) "水平參考線：開" else "水平參考線：關" }) {
+                    MenuItem.Button({ getString(R.string.player_advanced) }) { menu.open(sceneAdvancedPage) },
+                    MenuItem.Button({ getString(if (renderer.guide) R.string.player_guide_on else R.string.player_guide_off) }) {
                         renderer.guide = !renderer.guide
                     },
                 ),
                 listOf(
-                    MenuItem.Button({ "取消" }) { discardCalibration(); backToMain() },
-                    MenuItem.Button({ "全部歸零" }) { renderer.scene = SceneCalib() },
-                    MenuItem.Button({ "儲存" }) {
+                    MenuItem.Button({ getString(R.string.player_cancel) }) { discardCalibration(); backToMain() },
+                    MenuItem.Button({ getString(R.string.player_reset_all) }) { renderer.scene = SceneCalib() },
+                    MenuItem.Button({ getString(R.string.player_save) }) {
                         saveScene(renderer.scene)
                         backToMain()
                     },
@@ -872,9 +880,9 @@ class PlayerActivity : ComponentActivity() {
     /** 對準模式：使用者看向想要的正前方，按 A 或點螢幕。 */
     private val aimPage: MenuPage by lazy {
         MenuPage(
-            title = { "設定正前方" },
-            hint = { "看向影片中想要放在正前方的位置（例如主角），按 A 或點一下螢幕。" },
-            rows = listOf(listOf(MenuItem.Button({ "取消" }) { aiming = false; menu.open(scenePage) })),
+            title = { getString(R.string.player_set_forward) },
+            hint = { getString(R.string.player_aim_hint) },
+            rows = listOf(listOf(MenuItem.Button({ getString(R.string.player_cancel) }) { aiming = false; menu.open(scenePage) })),
             onBack = { aiming = false; menu.open(scenePage) },
         )
     }
@@ -900,20 +908,18 @@ class PlayerActivity : ComponentActivity() {
 
     private val sceneAdvancedPage: MenuPage by lazy {
         MenuPage(
-            title = { "這支影片的校正：進階" },
-            hint = {
-                "微調正前方；看久眼睛吃力或近物重影，再調雙眼垂直差與匯聚。"
-            },
+            title = { getString(R.string.player_scene_advanced_title) },
+            hint = { getString(R.string.player_scene_advanced_hint) },
             rows = listOf(
-                listOf(sceneStep("水平方向", 1f, { it.yawDeg }) { s, v -> s.copy(yawDeg = v) }),
-                listOf(sceneStep("仰俯", 0.5f, { it.pitchDeg }) { s, v -> s.copy(pitchDeg = v) }),
-                listOf(sceneStep("雙眼垂直差", 0.05f, { it.eyeVerticalDeg }) { s, v -> s.copy(eyeVerticalDeg = v) }),
-                listOf(sceneStep("匯聚", 0.1f, { it.convergenceDeg }) { s, v -> s.copy(convergenceDeg = v) }),
+                listOf(sceneStep(getString(R.string.player_yaw), 1f, { it.yawDeg }) { s, v -> s.copy(yawDeg = v) }),
+                listOf(sceneStep(getString(R.string.player_pitch), 0.5f, { it.pitchDeg }) { s, v -> s.copy(pitchDeg = v) }),
+                listOf(sceneStep(getString(R.string.player_eye_vertical), 0.05f, { it.eyeVerticalDeg }) { s, v -> s.copy(eyeVerticalDeg = v) }),
+                listOf(sceneStep(getString(R.string.player_convergence), 0.1f, { it.convergenceDeg }) { s, v -> s.copy(convergenceDeg = v) }),
                 listOf(
-                    MenuItem.Button({ if (renderer.scene.swapEyes) "左右眼：已對調" else "左右眼：正常" }) {
+                    MenuItem.Button({ getString(if (renderer.scene.swapEyes) R.string.player_eyes_swapped else R.string.player_eyes_normal) }) {
                         renderer.scene = renderer.scene.copy(swapEyes = !renderer.scene.swapEyes)
                     },
-                    MenuItem.Button({ "返回" }) { menu.open(scenePage) },
+                    MenuItem.Button({ getString(R.string.player_back) }) { menu.open(scenePage) },
                 ),
             ),
             onBack = { menu.open(scenePage) },
@@ -941,38 +947,35 @@ class PlayerActivity : ComponentActivity() {
 
     private val lensPage: MenuPage by lazy {
         MenuPage(
-            title = { "鏡片校正" },
+            title = { getString(R.string.player_lens_calibration) },
             hint = {
-                "設定檔：${renderer.lens.name}\n" + if (renderer.mode == VrRenderer.Mode.CENTER)
-                    "對中心：一次閉一隻眼。同心圓的圓心要在鏡片正中央，黃色外框四邊要被鏡片邊緣切掉一樣多。" +
-                        "圓心偏左就把『左右位置』往右調，偏下就把『上下位置』往上調；" +
-                        "若一眼偏高、另一眼偏低（手機歪了），調『傾斜』。"
-                else if (renderer.mode == VrRenderer.Mode.NONIUS)
-                    "眼距：左眼看到十字的上半與左半，右眼看到下半與右半。調『鏡片間距』直到兩段直線接成一直線、" +
-                        "橫線也對齊；黃圈是兩眼共同的參考。"
-                else
-                    "畸變：看正前方調 k1 讓中段線條變直，再看邊緣調 k2。最後左右轉頭，方格應像釘在牆上；" +
-                        "若方格跟著頭跑或反向滑動，調『螢幕到鏡片』。"
+                getString(R.string.player_lens_profile, renderer.lens.displayName(this)) + "\n" + getString(
+                    when (renderer.mode) {
+                        VrRenderer.Mode.CENTER -> R.string.player_lens_hint_center
+                        VrRenderer.Mode.NONIUS -> R.string.player_lens_hint_nonius
+                        else -> R.string.player_lens_hint_grid
+                    }
+                )
             },
             rows = listOf(
                 listOf(
-                    MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.CENTER) + "對中心" }) {
+                    MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.CENTER) + getString(R.string.player_pattern_center) }) {
                         renderer.mode = VrRenderer.Mode.CENTER
                     },
-                    MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.NONIUS) + "眼距對準圖" }) {
+                    MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.NONIUS) + getString(R.string.player_pattern_nonius) }) {
                         renderer.mode = VrRenderer.Mode.NONIUS
                     },
-                    MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.GRID) + "方格牆" }) {
+                    MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.GRID) + getString(R.string.player_pattern_grid) }) {
                         renderer.mode = VrRenderer.Mode.GRID
                     },
                 ),
                 listOf(
-                    lensStep("左右位置", 0.5f, "%+.1f mm", -30f, 30f, { it.offsetXMm }) { l, v -> l.copy(offsetXMm = v) },
-                    lensStep("傾斜", 0.2f, "%+.1f°", -10f, 10f, { it.tiltDeg }) { l, v -> l.copy(tiltDeg = v) },
+                    lensStep(getString(R.string.player_offset_x), 0.5f, "%+.1f mm", -30f, 30f, { it.offsetXMm }) { l, v -> l.copy(offsetXMm = v) },
+                    lensStep(getString(R.string.player_tilt), 0.2f, "%+.1f°", -10f, 10f, { it.tiltDeg }) { l, v -> l.copy(tiltDeg = v) },
                 ),
                 listOf(
                     MenuItem.Stepper(
-                        "上下位置",
+                        getString(R.string.player_vertical_position),
                         value = {
                             if (renderer.lens.alignment == VerticalAlignment.CENTER) "%+.1f mm".format(renderer.lens.lensHeightMm)
                             else "%.1f mm".format(renderer.lens.lensHeightMm)
@@ -982,11 +985,13 @@ class PlayerActivity : ComponentActivity() {
                         inc = { renderer.lens = moveLensVertical(renderer.lens, +0.5f) },
                     ),
                     MenuItem.Button({
-                        "基準：" + when (renderer.lens.alignment) {
-                            VerticalAlignment.BOTTOM -> "下緣"
-                            VerticalAlignment.CENTER -> "置中"
-                            VerticalAlignment.TOP -> "上緣"
-                        }
+                        getString(
+                            when (renderer.lens.alignment) {
+                                VerticalAlignment.BOTTOM -> R.string.player_reference_bottom
+                                VerticalAlignment.CENTER -> R.string.player_reference_center
+                                VerticalAlignment.TOP -> R.string.player_reference_top
+                            }
+                        )
                     }) {
                         // 只換表示方式：數值依螢幕高度換算，畫面不會跳
                         val all = VerticalAlignment.entries
@@ -994,30 +999,30 @@ class PlayerActivity : ComponentActivity() {
                         renderer.lens = changeLensAlignment(renderer.lens, next, renderer.screenHeightMm)
                     },
                 ),
-                listOf(lensStep("鏡片間距", 0.2f, "%.1f mm", 45f, 80f, { it.interLensMm }) { l, v -> l.copy(interLensMm = v) }),
-                listOf(lensStep("螢幕到鏡片", 0.2f, "%.1f mm", 20f, 70f, { it.screenToLensMm }) { l, v -> l.copy(screenToLensMm = v) }),
+                listOf(lensStep(getString(R.string.player_lens_separation), 0.2f, "%.1f mm", 45f, 80f, { it.interLensMm }) { l, v -> l.copy(interLensMm = v) }),
+                listOf(lensStep(getString(R.string.player_screen_to_lens), 0.2f, "%.1f mm", 20f, 70f, { it.screenToLensMm }) { l, v -> l.copy(screenToLensMm = v) }),
                 listOf(
                     lensStep("k1", 0.01f, "%.2f", -0.5f, 1.5f, { it.k1 }) { l, v -> l.copy(k1 = v) },
                     lensStep("k2", 0.01f, "%.2f", -0.5f, 1.5f, { it.k2 }) { l, v -> l.copy(k2 = v) },
                 ),
-                listOf(lensStep("可視半角", 1f, "%.0f°", 30f, 75f, { it.halfFovDeg }) { l, v -> l.copy(halfFovDeg = v) }),
+                listOf(lensStep(getString(R.string.player_half_fov), 1f, "%.0f°", 30f, 75f, { it.halfFovDeg }) { l, v -> l.copy(halfFovDeg = v) }),
                 listOf(
-                    MenuItem.Button({ "取消" }) { discardCalibration(); backToMain() },
-                    MenuItem.Button({ "Cardboard 預設值" }) {
+                    MenuItem.Button({ getString(R.string.player_cancel) }) { discardCalibration(); backToMain() },
+                    MenuItem.Button({ getString(R.string.player_cardboard_defaults) }) {
                         // 只換數值，保留目前設定檔的名稱；按「儲存」才會寫入
                         val cur = renderer.lens
                         renderer.lens = LensProfile.cardboardDefault().copy(id = cur.id, name = cur.name)
                     },
-                    MenuItem.Button({ "儲存" }) {
+                    MenuItem.Button({ getString(R.string.player_save) }) {
                         val l = renderer.lens
                         // 預設檔永遠不會被修改：從預設檔出發的校正結果另存成新的設定檔
                         val toSave = if (l.isPreset) l.copy(
                             id = java.util.UUID.randomUUID().toString(),
-                            name = "我的眼鏡（以 ${l.name} 為基礎）",
+                            name = getString(R.string.player_my_viewer_name, l.displayName(this)),
                         ) else l
                         renderer.lens = toSave
                         io.execute { store.upsertActive(toSave) }
-                        message = "鏡片設定檔「${toSave.name}」已儲存並啟用"
+                        message = getString(R.string.player_lens_saved, toSave.displayName(this))
                         runOnUiThread { refreshStatus() }
                         backToMain()
                     },
@@ -1030,6 +1035,10 @@ class PlayerActivity : ComponentActivity() {
     // ------------------------------------------------------------------ 工具
 
     private fun mark(on: Boolean) = if (on) "● " else "○ "
+
+    /** 版本標籤的顯示文字：ORIGINAL_LABEL 是內部常數，畫面上換成目前語言的「原檔」。 */
+    private fun variantLabel(label: String) =
+        if (label == ORIGINAL_LABEL) getString(R.string.player_variant_original) else label
 
     private fun rad(deg: Float) = Math.toRadians(deg.toDouble()).toFloat()
     private fun deg(rad: Float) = Math.toDegrees(rad.toDouble()).toFloat()
