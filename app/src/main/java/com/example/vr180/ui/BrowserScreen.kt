@@ -82,7 +82,7 @@ private class Listing(val rows: List<ListRow>, val skippedDirs: Int)
 private fun Scan.toListing(opt: BrowseOptions): Listing {
     val shown = if (opt.hideSmall) videos.filter { it.entry.size !in 0 until SMALL_BYTES } else videos
     val dirRows = dirs.sortedBy { it.name.lowercase() }.map { ListRow.Dir(it) }
-    return Listing(dirRows + group(shown, opt.sort), skippedDirs)
+    return Listing(dirRows + group(shown, opt.sort, opt.descending), skippedDirs)
 }
 
 private fun isVideo(e: FsEntry) = !e.isDir && e.name.substringAfterLast('.', "").lowercase() in VIDEO_EXT
@@ -118,7 +118,7 @@ private fun CoroutineScope.scan(
     return Scan(dirs, found, skipped)
 }
 
-private fun group(found: List<Found>, sort: BrowseSort): List<ListRow.Video> {
+private fun group(found: List<Found>, sort: BrowseSort, descending: Boolean): List<ListRow.Video> {
     val videos = found
         .map { f ->
             val (base, label) = parseVariant(f.entry.name.substringBeforeLast('.'))
@@ -133,11 +133,12 @@ private fun group(found: List<Found>, sort: BrowseSort): List<ListRow.Video> {
                 variants = list.sortedByDescending { variantRank(it.second) }.map { it.second to it.third.entry },
             )
         }
-    return when (sort) {
+    val ascending = when (sort) {
         BrowseSort.NAME -> videos.sortedWith(compareBy({ it.base.lowercase() }, { it.dirPath.lowercase() }))
-        BrowseSort.DATE -> videos.sortedByDescending { it.modifiedMs }
-        BrowseSort.SIZE -> videos.sortedByDescending { it.size }
+        BrowseSort.DATE -> videos.sortedBy { it.modifiedMs }
+        BrowseSort.SIZE -> videos.sortedBy { it.size }
     }
+    return if (descending) ascending.reversed() else ascending
 }
 
 private fun ListRow.Video.toPlaylistItem(source: FileSource) = Playlist.Item(
@@ -176,7 +177,7 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
     // 系統返回鍵／手勢：先退回上一層資料夾，到最上層才回首頁
     BackHandler(enabled = stack.size > 1) { stack = stack.dropLast(1) }
 
-    val listing = remember(scanResult, opt.sort, opt.hideSmall) { scanResult.toListing(opt) }
+    val listing = remember(scanResult, opt.sort, opt.descending, opt.hideSmall) { scanResult.toListing(opt) }
 
     // 只有「包含子資料夾」會改變要讀哪些資料夾；排序與隱藏小檔不重新掃描
     LaunchedEffect(source, dirId, reload, opt.includeSubfolders) {
@@ -203,7 +204,16 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
         ) {
             Text("排序", style = MaterialTheme.typography.bodyMedium)
             listOf(BrowseSort.NAME to "名稱", BrowseSort.DATE to "日期", BrowseSort.SIZE to "大小").forEach { (s, label) ->
-                FilterChip(selected = opt.sort == s, onClick = { update(opt.copy(sort = s)) }, label = { Text(label) })
+                val selected = opt.sort == s
+                // 再點一次已選的排序就切換升降；換排序時用那種排序的預設方向
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        update(if (selected) opt.copy(descending = !opt.descending)
+                            else opt.copy(sort = s, descending = s.defaultDescending))
+                    },
+                    label = { Text(if (selected) "$label ${if (opt.descending) "↓" else "↑"}" else label) },
+                )
             }
         }
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

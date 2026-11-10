@@ -167,10 +167,11 @@ NAS 的 SMB 連線資訊（`SmbConnection`）。
 | 欄位 | 型別 | 預設值 | 意義 |
 |---|---|---|---|
 | `sort` | string | `"NAME"` | `"NAME"`、`"DATE"`、`"SIZE"`；其他值視為 `"NAME"` |
+| `descending` | boolean | `NAME` 是 `false`，`DATE`、`SIZE` 是 `true` | 是否反向排序；缺欄位時用 `sort` 的預設方向 |
 | `includeSubfolders` | boolean | `false` | 是否列出子資料夾裡的影片 |
 | `hideSmall` | boolean | `true` | 是否隱藏小於 100 MB 的影片 |
 
-任一選項切換時寫入三個欄位。選項的行為見 [README 的「影片清單」](../README.md#影片清單)。
+任一選項切換時寫入全部四個欄位。選項的行為見 [README 的「影片清單」](../README.md#影片清單)。
 
 ## scenes/
 
