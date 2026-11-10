@@ -624,6 +624,18 @@ class PlayerActivity : ComponentActivity() {
                     MenuItem.Button({ "−10 秒" }) { runOnUiThread { seekBy(-10_000) } },
                     MenuItem.Button({ "+10 秒" }) { runOnUiThread { seekBy(10_000) } },
                 ),
+                // 進度列放在播放鍵下面：打開選單時焦點仍在播放鍵，按確認不會誤跳
+                listOf(
+                    MenuItem.Seek(
+                        label = { fmtTime(posMs) + " / " + if (durMs > 0) fmtTime(durMs) else "--:--" },
+                        fraction = { if (durMs > 0) posMs.toFloat() / durMs else -1f },
+                        step = { d -> runOnUiThread { seekBy(d * 10_000L) } },
+                        seekTo = { f ->
+                            val dur = durMs
+                            if (dur > 0) runOnUiThread { player?.seekTo((f * dur).toLong()) }
+                        },
+                    ),
+                ),
                 listOf(
                     MenuItem.Button({ "重新置中" }) { tracker.recenter(); replaceMenu = true },
                     MenuItem.Button({ "設定…" }) { menu.open(settingsPage) },

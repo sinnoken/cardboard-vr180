@@ -26,6 +26,17 @@ sealed class MenuItem {
         val dec: () -> Unit,
         val inc: () -> Unit,
     ) : MenuItem()
+
+    /**
+     * 進度列。控制器左右鍵呼叫 step(±1)；看著列上某個位置按確認就跳到那裡（seekTo 收到 0..1）。
+     * fraction 小於 0 代表還不知道長度。
+     */
+    data class Seek(
+        val label: () -> String,
+        val fraction: () -> Float,
+        val step: (dir: Int) -> Unit,
+        val seekTo: (Float) -> Unit,
+    ) : MenuItem()
 }
 
 class MenuPage(
@@ -67,6 +78,7 @@ class VrMenu {
     private var focus = 0
     private var gazeCell: Int? = null
     private var gazeZone = Zone.NONE
+    private var gazeSeek = -1f          // 視線在進度列上的位置 0..1，不在進度列上是 -1
     private var dirty = true
 
     /** 播放狀態等外部文字，任一執行緒都可以設定。 */
@@ -142,6 +154,7 @@ class VrMenu {
             val df = dot(g, f)
             var hit: Int? = null
             var zone = Zone.NONE
+            var seek = -1f
             if (df > 0.1f) {
                 val px = dot(g, r) / df / half[0]
                 val py = dot(g, u) / df / half[1]
@@ -152,6 +165,10 @@ class VrMenu {
                     if (idx >= 0) {
                         hit = idx
                         val c = cells[idx]
+                        if (c.item is MenuItem.Seek) {
+                            // 量化到 1/200，視線微動時不必每幀重畫
+                            seek = (((bx - c.rect.left - seekInset) / (c.rect.width() - 2 * seekInset)).coerceIn(0f, 1f) * 200f).toInt() / 200f
+                        }
                         if (c.item is MenuItem.Stepper) {
                             zone = when {
                                 bx < c.rect.left + c.rect.width() * 0.22f -> Zone.DEC
@@ -169,6 +186,7 @@ class VrMenu {
                 dirty = true
             }
             if (zone != gazeZone) { gazeZone = zone; dirty = true }
+            if (seek != gazeSeek) { gazeSeek = seek; dirty = true }
         }
         val d = dirty
         if (dirty) { draw(); dirty = false }
@@ -192,6 +210,8 @@ class VrMenu {
                 val item = cur.item
                 if (item is MenuItem.Stepper) {
                     if (a == NavAction.LEFT) item.dec() else item.inc()
+                } else if (item is MenuItem.Seek) {
+                    item.step(if (a == NavAction.LEFT) -1 else 1)
                 } else {
                     val next = cells.withIndex().filter { it.value.row == cur.row }
                         .firstOrNull { it.value.col == cur.col + if (a == NavAction.LEFT) -1 else 1 }
@@ -206,6 +226,8 @@ class VrMenu {
                     Zone.INC -> item.inc()
                     Zone.NONE -> {}
                 }
+                // 只有視線正落在進度列上才跳，焦點在進度列但視線在別處時不動
+                is MenuItem.Seek -> if (gazeCell == focus && gazeSeek >= 0f) item.seekTo(gazeSeek)
             }
             NavAction.BACK -> p.onBack()
         }
@@ -227,6 +249,7 @@ class VrMenu {
     private val hintH = 190f
     private val rowH = 82f
     private val gap = 10f
+    private val seekInset = 24f   // 進度列左右內縮，視線換算與繪製共用
 
     private fun layout() {
         val p = page ?: return
@@ -247,6 +270,11 @@ class VrMenu {
     private val cellBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(255, 48, 52, 62) }
     private val focusBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(255, 40, 98, 180) }
     private val zoneBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(255, 230, 160, 40) }
+    private val trackBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(255, 90, 95, 108) }
+    private val trackFg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+    private val seekTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE; textSize = 30f; textAlign = Paint.Align.CENTER
+    }
     private val zoneHintBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(90, 230, 160, 40) }
     private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE; textSize = 52f; typeface = Typeface.DEFAULT_BOLD
@@ -294,6 +322,20 @@ class VrMenu {
                     canvas.drawText("−", left.centerX(), baseline, textPaint)
                     canvas.drawText("+", right.centerX(), baseline, textPaint)
                     canvas.drawText("${item.label}  ${item.value()}", c.rect.centerX(), baseline, textPaint)
+                }
+                is MenuItem.Seek -> {
+                    canvas.drawText(item.label(), c.rect.centerX(), c.rect.top + 34f, seekTextPaint)
+                    val bar = RectF(c.rect.left + seekInset, c.rect.bottom - 22f, c.rect.right - seekInset, c.rect.bottom - 12f)
+                    canvas.drawRoundRect(bar, 5f, 5f, trackBg)
+                    val frac = item.fraction()
+                    if (frac >= 0f) {
+                        val done = RectF(bar.left, bar.top, bar.left + bar.width() * frac.coerceIn(0f, 1f), bar.bottom)
+                        canvas.drawRoundRect(done, 5f, 5f, trackFg)
+                    }
+                    if (gazeCell == i && gazeSeek >= 0f) {
+                        val x = bar.left + bar.width() * gazeSeek
+                        canvas.drawRect(x - 3f, c.rect.top + 6f, x + 3f, c.rect.bottom - 6f, zoneBg)
+                    }
                 }
             }
         }
