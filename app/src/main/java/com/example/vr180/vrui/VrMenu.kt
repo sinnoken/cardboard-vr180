@@ -201,9 +201,11 @@ class VrMenu {
             if (zone != gazeZone) { gazeZone = zone; dirty = true }
             if (seek != gazeSeek) { gazeSeek = seek; dirty = true }
         }
-        val d = dirty
-        if (dirty) { draw(); dirty = false }
-        return d
+        // 面板收起時不畫也不上傳貼圖（播放中每秒都會 invalidate）；dirty 留著，下次顯示時再畫
+        if (!dirty || !visible) return false
+        draw()
+        dirty = false
+        return true
     }
 
     /** 控制器（或 Cardboard 按鈕）輸入。回傳是否已處理。 */
