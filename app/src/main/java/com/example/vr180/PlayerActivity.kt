@@ -143,6 +143,8 @@ class PlayerActivity : ComponentActivity() {
             yawDriftDegPerSec = device.yawDriftDegPerSec
         }
         renderer = VrRenderer(tracker) { s ->
+            // GL 執行緒：GL context 重建後選單貼圖被換成 1×1 透明，要重畫一次，否則開著的選單會看不見
+            menu.invalidate()
             runOnUiThread { videoSurface = s; player?.setVideoSurface(s) }
         }.apply {
             lens = store.loadLenses().active
