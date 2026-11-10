@@ -16,6 +16,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.tan
 
 /**
@@ -121,6 +123,11 @@ class VrRenderer(
             VerticalAlignment.CENTER -> height / 2f + l.lensHeightMm * pxmm
         }
         val offX = l.offsetXMm * pxmm
+        // 手機歪斜時只有鏡片中心的位置會變：兩中心沿著傾斜的連線分開。
+        // 不需要旋轉畫面本身——陀螺儀量的就是手機方向，畫面已經對世界保持水平。
+        val tilt = rad(l.tiltDeg)
+        val sepX = halfSep * cos(tilt)
+        val sepY = halfSep * sin(tilt)
 
         // 場景校正：內容 ← 世界 = Rs⁻¹；單眼修正（垂直落差、匯聚）各分一半給兩眼
         val rs = M3.mul(M3.rotY(rad(s.yawDeg)), M3.rotX(rad(s.pitchDeg)), M3.rotZ(rad(s.rollDeg)))
@@ -162,12 +169,14 @@ class VrRenderer(
                 M3.rotX(rad(sign * s.eyeVerticalDeg / 2f)),
             )
             val contentFromEye = M3.mul(adj, contentFromWorld, head)
-            val cx = width / 2f + offX + (if (eye == 0) -halfSep else halfSep)
+            val side = if (eye == 0) -1f else 1f
+            val cx = width / 2f + offX + side * sepX
+            val cyEye = cy + side * sepY
             val useRightHalf = (eye == 1) != s.swapEyes
 
             GLES30.glViewport(eye * width / 2, 0, width / 2, height)
             GLES30.glUniform1i(loc["uEye"]!!, eye)
-            GLES30.glUniform2f(loc["uLensCenter"]!!, cx, cy)
+            GLES30.glUniform2f(loc["uLensCenter"]!!, cx, cyEye)
             GLES30.glUniform1f(loc["uVideoOffset"]!!, if (useRightHalf) 0.5f else 0f)
             GLES30.glUniformMatrix3fv(loc["uContentFromEye"]!!, 1, true, contentFromEye, 0)
             GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)

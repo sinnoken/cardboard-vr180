@@ -522,7 +522,8 @@ class PlayerActivity : ComponentActivity() {
             hint = {
                 "設定檔：${renderer.lens.name}\n" + if (renderer.mode == VrRenderer.Mode.CENTER)
                     "對中心：一次閉一隻眼。同心圓的圓心要在鏡片正中央，黃色外框四邊要被鏡片邊緣切掉一樣多。" +
-                        "圓心偏左就把『左右位置』往右調，偏下就把『上下位置』往上調。"
+                        "圓心偏左就把『左右位置』往右調，偏下就把『上下位置』往上調；" +
+                        "若一眼偏高、另一眼偏低（手機歪了），調『傾斜』。"
                 else if (renderer.mode == VrRenderer.Mode.NONIUS)
                     "眼距：左眼看到十字的上半與左半，右眼看到下半與右半。調『鏡片間距』直到兩段直線接成一直線、" +
                         "橫線也對齊；黃圈是兩眼共同的參考。"
@@ -542,7 +543,10 @@ class PlayerActivity : ComponentActivity() {
                         renderer.mode = VrRenderer.Mode.GRID
                     },
                 ),
-                listOf(lensStep("左右位置", 0.5f, "%+.1f mm", -30f, 30f, { it.offsetXMm }) { l, v -> l.copy(offsetXMm = v) }),
+                listOf(
+                    lensStep("左右位置", 0.5f, "%+.1f mm", -30f, 30f, { it.offsetXMm }) { l, v -> l.copy(offsetXMm = v) },
+                    lensStep("傾斜", 0.2f, "%+.1f°", -10f, 10f, { it.tiltDeg }) { l, v -> l.copy(tiltDeg = v) },
+                ),
                 listOf(
                     MenuItem.Stepper(
                         "上下位置",

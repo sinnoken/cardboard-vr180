@@ -21,6 +21,7 @@ data class LensProfile(
     val k2: Float,
     val halfFovDeg: Float,         // 單眼可視半角，超出部分塗黑
     val offsetXMm: Float = 0f,     // 兩眼畫面一起左右平移（正 = 往右）；手機沒放在眼鏡正中間時用
+    val tiltDeg: Float = 0f,       // 手機在眼鏡裡歪斜：兩鏡片中心連線相對螢幕水平的角度（正 = 右眼較高）
 ) {
     val isPreset: Boolean get() = id.startsWith("preset-")
 
@@ -33,6 +34,7 @@ data class LensProfile(
         .put("k1", k1.toDouble()).put("k2", k2.toDouble())
         .put("halfFovDeg", halfFovDeg.toDouble())
         .put("offsetXMm", offsetXMm.toDouble())
+        .put("tiltDeg", tiltDeg.toDouble())
 
     companion object {
         fun fromJson(o: JSONObject) = LensProfile(
@@ -47,6 +49,7 @@ data class LensProfile(
             k2 = o.optDouble("k2", 0.2).toFloat(),
             halfFovDeg = o.optDouble("halfFovDeg", 50.0).toFloat(),
             offsetXMm = o.optDouble("offsetXMm", 0.0).toFloat(),
+            tiltDeg = o.optDouble("tiltDeg", 0.0).toFloat(),
         )
 
         const val CARDBOARD_DEFAULT_ID = "preset-cardboard-v1"
