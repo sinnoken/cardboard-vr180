@@ -3,6 +3,8 @@ package com.example.vr180
 import android.hardware.input.InputManager
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.GestureDetector
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -46,6 +48,8 @@ import com.example.vr180.vrui.NavAction
 import com.example.vr180.vrui.VrMenu
 import org.json.JSONObject
 import java.util.concurrent.Executors
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
 /**
  * VR 播放畫面。執行緒分工：
@@ -89,12 +93,33 @@ class PlayerActivity : ComponentActivity() {
     @Volatile private var videoSize = "—"
     @Volatile private var controllerName = "未連線"
     @Volatile private var message = ""
+    @Volatile private var playerFailed = false      // 播放錯誤：主選單的播放鍵變成「重試」
+    @Volatile private var playerEnded = false       // 播完：播放鍵變成「重播」
+    @Volatile private var buffering = false
+    @Volatile private var posMs = 0L
+    @Volatile private var durMs = 0L
+    @Volatile private var sceneLoaded = false
+    @Volatile private var started = false           // 戴好眼鏡按下開始之前不播放、不置中
+
+    private val ui = Handler(Looper.getMainLooper())
+    private var deviceListener: InputManager.InputDeviceListener? = null
+    private val clock = object : Runnable {
+        override fun run() {
+            player?.let { p ->
+                val pos = p.currentPosition
+                val dur = p.duration.coerceAtLeast(0L)
+                if (pos / 1000 != posMs / 1000 || dur != durMs) { posMs = pos; durMs = dur; refreshStatus() }
+            }
+            ui.postDelayed(this, 500)
+        }
+    }
 
     // 以下只在 GL 執行緒存取
     private var lastHead = M3.identity()
     private var replaceMenu = false
     private var lensBeforeEdit: LensProfile? = null
     private var sceneBeforeEdit: SceneCalib? = null
+    private var aiming = false                      // 「設定正前方」等待使用者按鍵
 
     // ------------------------------------------------------------------ 生命週期
 
@@ -145,6 +170,9 @@ class PlayerActivity : ComponentActivity() {
         })
         watchControllers()
 
+        if (!tracker.available) {
+            message = "這支手機找不到頭部追蹤感測器，畫面不會跟著轉頭"
+        }
         if (uris.any { it.startsWith("smb:") } && !LocalNetworkPermission.granted(this)) {
             message = "缺少區域網路權限，無法讀取 NAS。請回主畫面重新連線以授權。"
         }
@@ -158,11 +186,13 @@ class PlayerActivity : ComponentActivity() {
         glView.onResume()
         tracker.start()
         goImmersive()
+        ui.post(clock)
     }
 
     override fun onPause() {
         super.onPause()
         input.cancel()
+        ui.removeCallbacks(clock)
         tracker.stop()
         glView.onPause()
         player?.pause()
@@ -170,6 +200,8 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        ui.removeCallbacks(clock)
+        deviceListener?.let { (getSystemService(INPUT_SERVICE) as InputManager).unregisterInputDeviceListener(it) }
         player?.release(); player = null
         if (::renderer.isInitialized) renderer.release()
         io.shutdown()
@@ -187,8 +219,12 @@ class PlayerActivity : ComponentActivity() {
         input.onGenericMotion(event) || super.onGenericMotionEvent(event)
 
     private fun dispatch(a: VrAction, fromTap: Boolean = false, heldMs: Long = 0L) {
+        if (!started) {
+            if (heldMs == 0L) glView.queueEvent { if (a == VrAction.BACK) runOnUiThread { finish() } else startPlayback() }
+            return
+        }
         when (a) {
-            VrAction.PLAY_PAUSE -> togglePlay()
+            VrAction.PLAY_PAUSE -> playButton()
             VrAction.SEEK_BACK -> seekBy(-10_000)
             VrAction.SEEK_FWD -> seekBy(10_000)
             else -> glView.queueEvent { handleOnGl(a, fromTap, heldMs) }
@@ -199,9 +235,12 @@ class PlayerActivity : ComponentActivity() {
     private fun handleOnGl(a: VrAction, fromTap: Boolean, heldMs: Long) {
         when (a) {
             VrAction.RECENTER -> { tracker.recenter(); replaceMenu = menu.visible }
-            VrAction.MENU -> if (menu.visible) closeMenu() else menu.show(mainPage, lastHead)
+            // 選單鍵在校正頁 = 不儲存離開（先還原，避免修改在不知情下被丟掉或留著）
+            VrAction.MENU -> if (menu.visible) { discardCalibration(); closeMenu() } else menu.show(mainPage, lastHead)
             else -> {
-                if (!menu.visible) {
+                if (aiming && a == VrAction.SELECT && !(fromTap && menu.isGazingAtItem())) {
+                    captureFront()
+                } else if (!menu.visible) {
                     when (a) {
                         VrAction.SELECT, VrAction.BACK -> menu.show(mainPage, lastHead)
                         // 按住左右：不要每 90ms 跳一次，最多每 0.6 秒跳 10 秒
@@ -256,6 +295,11 @@ class PlayerActivity : ComponentActivity() {
     /** GL 執行緒：每幀由渲染器呼叫。 */
     private fun onGlFrame(head: FloatArray) {
         lastHead = head
+        if (!started) {
+            // 還沒開始：提示面板跟著視線，戴上眼鏡時一定看得到
+            if (menu.page !== startPage) menu.show(startPage, head)
+            menu.placeInFront(head)
+        }
         if (replaceMenu) {
             replaceMenu = false
             menu.placeInFront(head, if (menu.page === mainPage) null else CALIB_PANEL_PITCH)
@@ -278,11 +322,13 @@ class PlayerActivity : ComponentActivity() {
             controllerName = if (names.isEmpty()) "未連線" else names.joinToString("、")
             refreshStatus()
         }
-        im.registerInputDeviceListener(object : InputManager.InputDeviceListener {
+        val l = object : InputManager.InputDeviceListener {
             override fun onInputDeviceAdded(id: Int) = refresh()
             override fun onInputDeviceRemoved(id: Int) = refresh()
             override fun onInputDeviceChanged(id: Int) = refresh()
-        }, null)
+        }
+        deviceListener = l
+        im.registerInputDeviceListener(l, null)
         refresh()
     }
 
@@ -321,7 +367,8 @@ class PlayerActivity : ComponentActivity() {
                     PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
                         fallback(error.errorCodeName)
                     else -> {
-                        message = "播放錯誤：${error.errorCodeName}"
+                        playerFailed = true
+                        message = playbackErrorText(error)
                         refreshStatus()
                         glView.queueEvent { if (!menu.visible) menu.show(mainPage, lastHead) }
                     }
@@ -330,6 +377,14 @@ class PlayerActivity : ComponentActivity() {
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying; refreshStatus()
+            }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                buffering = state == Player.STATE_BUFFERING
+                playerEnded = state == Player.STATE_ENDED
+                if (state == Player.STATE_READY) playerFailed = false
+                refreshStatus()
+                if (playerEnded) glView.queueEvent { if (!menu.visible) menu.show(mainPage, lastHead) }
             }
 
             override fun onVideoSizeChanged(size: VideoSize) {
@@ -360,7 +415,7 @@ class PlayerActivity : ComponentActivity() {
         decoderName = "—"; videoSize = "—"
         p.setMediaItem(MediaItem.fromUri(uris[i]))
         p.prepare()
-        p.playWhenReady = true
+        p.playWhenReady = started
         refreshStatus()
     }
 
@@ -372,12 +427,38 @@ class PlayerActivity : ComponentActivity() {
             message = "${labels.getOrElse(variantIndex) { "此版本" }} 無法硬解（$reason），改播較低解析度"
             playVariant(variantIndex + 1)
         } else {
-            message = "所有版本都無法以硬體解碼播放：$reason"
+            message = "這支手機無法硬體解碼這支影片的任何版本（$reason）。請轉成較低解析度，例如 5.7K。"
+            playerFailed = true
             player?.stop()
             refreshStatus()
             glView.queueEvent { if (!menu.visible) menu.show(mainPage, lastHead) }
         }
     }
+
+    /** 主選單的播放鍵：依狀態是播放／暫停、重試或重播。 */
+    private fun playButton() {
+        val p = player ?: return
+        when {
+            playerFailed -> {
+                val pos = p.currentPosition
+                playerFailed = false; failedVariant = -1; message = ""
+                playVariant(variantIndex)
+                if (pos > 0) p.seekTo(pos)
+            }
+            playerEnded -> { p.seekTo(0); p.play() }
+            else -> togglePlay()
+        }
+    }
+
+    private fun playbackErrorText(e: PlaybackException): String = when (e.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "連不到 NAS（網路中斷或 NAS 關機）"
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "NAS 回應逾時，網路可能太慢或不穩"
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "找不到影片檔，可能已被移動或刪除"
+        PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> "沒有讀取這個檔案的權限"
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED -> "影片檔損壞或格式不支援"
+        else -> "播放錯誤（${e.errorCodeName}）"
+    } + "。可以按「重試」。"
 
     private fun togglePlay() {
         val p = player ?: return
@@ -391,11 +472,15 @@ class PlayerActivity : ComponentActivity() {
 
     private fun refreshStatus() {
         val label = labels.getOrElse(variantIndex) { "" }
+        // 最重要的放前面：面板文字最多 5 行，超過的會被截掉
         menu.status = buildString {
-            append(videoTitle)
+            if (message.isNotBlank()) append(message).append('\n')
+            append(fmtTime(posMs)).append(" / ").append(if (durMs > 0) fmtTime(durMs) else "--:--")
+            if (buffering) append(" · 載入中…")
             if (label.isNotBlank()) append(" · $label（${variantIndex + 1}/${uris.size}）")
-            append(" · $videoSize · 解碼器 $decoderName\n控制器：$controllerName")
-            if (message.isNotBlank()) append("\n$message")
+            append(" · $videoSize · 解碼器 $decoderName")
+            append("\n控制器：$controllerName")
+            if (::renderer.isInitialized && renderer.scene != SceneCalib()) append(" · 已套用這支影片的校正")
         }
         if (::glView.isInitialized) glView.queueEvent { menu.invalidate() }
     }
@@ -412,6 +497,8 @@ class PlayerActivity : ComponentActivity() {
                     ?.let { runCatching { SceneCalib.fromJson(JSONObject(it)) }.getOrNull() }
             }
             renderer.scene = remote ?: local ?: SceneCalib()
+            sceneLoaded = true
+            runOnUiThread { refreshStatus() }
         }
     }
 
@@ -419,9 +506,9 @@ class PlayerActivity : ComponentActivity() {
         io.execute {
             store.saveScene(sceneKey, s)
             val sc = sidecar
-            message = if (sc == null) "場景校正已存在手機" else runCatching {
+            message = if (sc == null) "這支影片的校正已存在手機" else runCatching {
                 sidecarIo.write(sc, s.toJson().toString(2))
-            }.fold({ "場景校正已存到手機與影片資料夾" }, { "影片資料夾無法寫入，場景校正只存在手機" })
+            }.fold({ "這支影片的校正已存到手機與影片資料夾" }, { "影片資料夾無法寫入，校正只存在手機" })
             runOnUiThread { refreshStatus() }
         }
     }
@@ -432,28 +519,63 @@ class PlayerActivity : ComponentActivity() {
         menu.hide()
         renderer.mode = VrRenderer.Mode.VIDEO
         renderer.guide = false
+        aiming = false
     }
+
+    /** 校正頁沒按「儲存」就離開：還原修改並提示。 */
+    private fun discardCalibration() {
+        when (menu.page) {
+            lensPage -> lensBeforeEdit?.let { renderer.lens = it }
+            scenePage, sceneAdvancedPage, aimPage -> sceneBeforeEdit?.let { renderer.scene = it }
+            else -> return
+        }
+        message = "校正沒有儲存，已還原"
+        runOnUiThread { refreshStatus() }
+    }
+
+    // ---- 開始前：戴好眼鏡再置中、開始播放 ----
+
+    private val startPage: MenuPage by lazy {
+        MenuPage(
+            title = videoTitle.ifBlank { "VR180 播放器" },
+            hint = { "戴好眼鏡、看向正前方，按任意鍵或點一下螢幕開始播放。" },
+            rows = listOf(listOf(MenuItem.Button({ "開始播放" }) { startPlayback() })),
+            onBack = { runOnUiThread { finish() } },
+            showStatus = true,
+        )
+    }
+
+    /** GL 執行緒。 */
+    private fun startPlayback() {
+        if (started) return
+        started = true
+        tracker.recenter()
+        closeMenu()
+        runOnUiThread { player?.playWhenReady = true }
+    }
+
+    // ---- 主選單：只放每次看片都會用到的 ----
 
     private val mainPage: MenuPage by lazy {
         MenuPage(
-            title = "VR180 播放器",
-            hint = {
-                "控制器：方向鍵移動、A 確認、B 返回、X 重新置中。" +
-                    "沒有控制器時：看著項目按 Cardboard 按鈕，長按畫面重新置中。"
-            },
+            title = videoTitle.ifBlank { "VR180 播放器" },
+            hint = { "沒有控制器：看著項目點螢幕；看別處點一下關閉選單；長按畫面重新置中。" },
             rows = listOf(
                 listOf(
-                    MenuItem.Button({ if (playing) "暫停" else "播放" }) { runOnUiThread { togglePlay() } },
+                    MenuItem.Button({
+                        when {
+                            playerFailed -> "重試"
+                            playerEnded -> "重播"
+                            playing -> "暫停"
+                            else -> "播放"
+                        }
+                    }) { runOnUiThread { playButton() } },
                     MenuItem.Button({ "−10 秒" }) { runOnUiThread { seekBy(-10_000) } },
                     MenuItem.Button({ "+10 秒" }) { runOnUiThread { seekBy(10_000) } },
                 ),
                 listOf(
                     MenuItem.Button({ "重新置中" }) { tracker.recenter(); replaceMenu = true },
-                    MenuItem.Button({ "場景校正" }) { openScene() },
-                    MenuItem.Button({ "鏡片校正" }) { openLens() },
-                ),
-                listOf(
-                    MenuItem.Button({ "關閉選單" }) { closeMenu() },
+                    MenuItem.Button({ "設定…" }) { menu.open(settingsPage) },
                     MenuItem.Button({ "離開播放" }) { runOnUiThread { finish() } },
                 ),
             ),
@@ -462,16 +584,35 @@ class PlayerActivity : ComponentActivity() {
         )
     }
 
+    private val settingsPage: MenuPage by lazy {
+        MenuPage(
+            title = "設定",
+            hint = { "鏡片校正：換眼鏡或手機時做一次。這支影片的校正：只有這支片拍歪時才需要。" },
+            rows = listOf(
+                listOf(MenuItem.Button({ "鏡片校正" }) { openLens() }),
+                listOf(MenuItem.Button({ "這支影片的校正" }) { openScene() }),
+                listOf(MenuItem.Button({ "返回" }) { menu.open(mainPage) }),
+            ),
+            onBack = { menu.open(mainPage) },
+        )
+    }
+
     private fun backToMain() {
         renderer.mode = VrRenderer.Mode.VIDEO
         renderer.guide = false
+        aiming = false
         menu.open(mainPage)
         menu.placeInFront(lastHead)
     }
 
-    // ---- 場景校正 ----
+    // ---- 這支影片的校正（場景校正）----
 
     private fun openScene() {
+        if (!sceneLoaded) {
+            message = "這支影片的校正還在讀取，請稍候再試"
+            runOnUiThread { refreshStatus() }
+            return
+        }
         sceneBeforeEdit = renderer.scene
         renderer.guide = true
         menu.open(scenePage)
@@ -489,37 +630,84 @@ class PlayerActivity : ComponentActivity() {
 
     private val scenePage: MenuPage by lazy {
         MenuPage(
-            title = "場景校正（這支影片）",
+            title = "這支影片的校正",
             hint = {
-                "先用『地平線』和『仰俯』讓影片的地平線對齊紅色水平線，『水平方向』決定正前方。" +
-                    "看久眼睛吃力或近物重影，再調雙眼垂直差與匯聚。B 鍵放棄修改。"
+                "畫面中的主角或地平線不在正前方：按『設定正前方』。地平線左右歪：調『地平線』，" +
+                    "讓影片的地平線對齊紅色水平線。"
+            },
+            rows = listOf(
+                listOf(MenuItem.Button({ "設定正前方（看著目標點一下）" }) {
+                    aiming = true
+                    menu.open(aimPage)
+                }),
+                listOf(sceneStep("地平線", 0.2f, { it.rollDeg }) { s, v -> s.copy(rollDeg = v) }),
+                listOf(
+                    MenuItem.Button({ "進階…" }) { menu.open(sceneAdvancedPage) },
+                    MenuItem.Button({ if (renderer.guide) "水平參考線：開" else "水平參考線：關" }) {
+                        renderer.guide = !renderer.guide
+                    },
+                ),
+                listOf(
+                    MenuItem.Button({ "取消" }) { discardCalibration(); backToMain() },
+                    MenuItem.Button({ "全部歸零" }) { renderer.scene = SceneCalib() },
+                    MenuItem.Button({ "儲存" }) {
+                        saveScene(renderer.scene)
+                        backToMain()
+                    },
+                ),
+            ),
+            onBack = { discardCalibration(); backToMain() },
+        )
+    }
+
+    /** 對準模式：使用者看向想要的正前方，按 A 或點螢幕。 */
+    private val aimPage: MenuPage by lazy {
+        MenuPage(
+            title = "設定正前方",
+            hint = { "看向影片中想要放在正前方的位置（例如主角），按 A 或點一下螢幕。" },
+            rows = listOf(listOf(MenuItem.Button({ "取消" }) { aiming = false; menu.open(scenePage) })),
+            onBack = { aiming = false; menu.open(scenePage) },
+        )
+    }
+
+    /**
+     * 把目前視線看到的影片方向設成正前方（同時決定水平方向與仰俯，地平線不變）。
+     * 內容方向 c = Rs⁻¹·g；要找新的 Rs' = rotY(yaw')·rotX(pitch')·rotZ(roll) 使 Rs'·c = (0,0,-1)。
+     */
+    private fun captureFront() {
+        val s = renderer.scene
+        val rs = M3.mul(M3.rotY(rad(s.yawDeg)), M3.rotX(rad(s.pitchDeg)), M3.rotZ(rad(s.rollDeg)))
+        val g = M3.apply(lastHead, 0f, 0f, -1f)
+        val c = M3.apply(M3.transpose(rs), g[0], g[1], g[2])
+        val c1 = M3.apply(M3.rotZ(rad(s.rollDeg)), c[0], c[1], c[2])
+        val pitch = atan2(-c1[1], -c1[2])
+        val r = sqrt(c1[1] * c1[1] + c1[2] * c1[2])
+        val yaw = atan2(c1[0], r)
+        renderer.scene = s.copy(yawDeg = deg(yaw), pitchDeg = deg(pitch))
+        aiming = false
+        menu.open(scenePage)
+        menu.placeInFront(lastHead, CALIB_PANEL_PITCH)
+    }
+
+    private val sceneAdvancedPage: MenuPage by lazy {
+        MenuPage(
+            title = "這支影片的校正：進階",
+            hint = {
+                "微調正前方；看久眼睛吃力或近物重影，再調雙眼垂直差與匯聚。"
             },
             rows = listOf(
                 listOf(sceneStep("水平方向", 1f, { it.yawDeg }) { s, v -> s.copy(yawDeg = v) }),
                 listOf(sceneStep("仰俯", 0.5f, { it.pitchDeg }) { s, v -> s.copy(pitchDeg = v) }),
-                listOf(sceneStep("地平線", 0.2f, { it.rollDeg }) { s, v -> s.copy(rollDeg = v) }),
                 listOf(sceneStep("雙眼垂直差", 0.05f, { it.eyeVerticalDeg }) { s, v -> s.copy(eyeVerticalDeg = v) }),
                 listOf(sceneStep("匯聚", 0.1f, { it.convergenceDeg }) { s, v -> s.copy(convergenceDeg = v) }),
                 listOf(
                     MenuItem.Button({ if (renderer.scene.swapEyes) "左右眼：已對調" else "左右眼：正常" }) {
                         renderer.scene = renderer.scene.copy(swapEyes = !renderer.scene.swapEyes)
                     },
-                    MenuItem.Button({ if (renderer.guide) "水平參考線：開" else "水平參考線：關" }) {
-                        renderer.guide = !renderer.guide
-                    },
-                ),
-                listOf(
-                    MenuItem.Button({ "全部歸零" }) { renderer.scene = SceneCalib() },
-                    MenuItem.Button({ "儲存並返回" }) {
-                        saveScene(renderer.scene)
-                        backToMain()
-                    },
+                    MenuItem.Button({ "返回" }) { menu.open(scenePage) },
                 ),
             ),
-            onBack = {
-                sceneBeforeEdit?.let { renderer.scene = it }
-                backToMain()
-            },
+            onBack = { menu.open(scenePage) },
         )
     }
 
@@ -555,7 +743,7 @@ class PlayerActivity : ComponentActivity() {
                         "橫線也對齊；黃圈是兩眼共同的參考。"
                 else
                     "畸變：看正前方調 k1 讓中段線條變直，再看邊緣調 k2。最後左右轉頭，方格應像釘在牆上；" +
-                        "若方格跟著頭跑或反向滑動，調『螢幕到鏡片』。B 鍵放棄修改。"
+                        "若方格跟著頭跑或反向滑動，調『螢幕到鏡片』。"
             },
             rows = listOf(
                 listOf(
@@ -604,13 +792,13 @@ class PlayerActivity : ComponentActivity() {
                 ),
                 listOf(lensStep("可視半角", 1f, "%.0f°", 30f, 75f, { it.halfFovDeg }) { l, v -> l.copy(halfFovDeg = v) }),
                 listOf(
-                    MenuItem.Button({ "還原" }) { lensBeforeEdit?.let { renderer.lens = it } },
+                    MenuItem.Button({ "取消" }) { discardCalibration(); backToMain() },
                     MenuItem.Button({ "Cardboard 預設值" }) {
                         // 只換數值，保留目前設定檔的名稱；按「儲存」才會寫入
                         val cur = renderer.lens
                         renderer.lens = LensProfile.cardboardDefault().copy(id = cur.id, name = cur.name)
                     },
-                    MenuItem.Button({ "儲存並返回" }) {
+                    MenuItem.Button({ "儲存" }) {
                         val l = renderer.lens
                         // 預設檔永遠不會被修改：從預設檔出發的校正結果另存成新的設定檔
                         val toSave = if (l.isPreset) l.copy(
@@ -625,16 +813,22 @@ class PlayerActivity : ComponentActivity() {
                     },
                 ),
             ),
-            onBack = {
-                lensBeforeEdit?.let { renderer.lens = it }
-                backToMain()
-            },
+            onBack = { discardCalibration(); backToMain() },
         )
     }
 
     // ------------------------------------------------------------------ 工具
 
     private fun mark(on: Boolean) = if (on) "● " else "○ "
+
+    private fun rad(deg: Float) = Math.toRadians(deg.toDouble()).toFloat()
+    private fun deg(rad: Float) = Math.toDegrees(rad.toDouble()).toFloat()
+
+    private fun fmtTime(ms: Long): String {
+        val t = ms / 1000
+        val h = t / 3600; val m = (t % 3600) / 60; val sec = t % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+    }
 
     /** 畫面往上（up > 0）或往下移動 |up| mm，依基準換算成 lensHeightMm。 */
     private fun moveLensVertical(l: LensProfile, up: Float): LensProfile = when (l.alignment) {

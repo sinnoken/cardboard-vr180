@@ -165,13 +165,10 @@ class VrMenu {
         if (cells.isEmpty()) return false
         val cur = cells[focus.coerceIn(cells.indices)]
         when (a) {
+            // 上下鍵依閱讀順序走到上一格／下一格：同一列有兩個數值項目時（例如 k1、k2），
+            // 左右鍵已經拿去調數值，只有這樣右邊那格才走得到
             NavAction.UP, NavAction.DOWN -> {
-                val target = cur.row + if (a == NavAction.UP) -1 else 1
-                val rowCells = cells.withIndex().filter { it.value.row == target }
-                if (rowCells.isNotEmpty()) {
-                    val cx = cur.rect.centerX()
-                    focus = rowCells.minBy { abs(it.value.rect.centerX() - cx) }.index
-                }
+                focus = (focus + if (a == NavAction.UP) -1 else 1).coerceIn(cells.indices)
                 gazeZone = Zone.NONE
             }
             NavAction.LEFT, NavAction.RIGHT -> {
@@ -186,7 +183,8 @@ class VrMenu {
             }
             NavAction.SELECT -> when (val item = cur.item) {
                 is MenuItem.Button -> item.action()
-                is MenuItem.Stepper -> when (gazeZone) {
+                // 視線的 − / + 區只對「視線所在的那一格」有效，避免視線在 A、焦點在 B 時調到 B
+                is MenuItem.Stepper -> when (if (gazeCell == focus) gazeZone else Zone.NONE) {
                     Zone.DEC -> item.dec()
                     Zone.INC -> item.inc()
                     Zone.NONE -> {}
@@ -248,7 +246,8 @@ class VrMenu {
         canvas.drawRoundRect(RectF(0f, 0f, bmpW.toFloat(), bmpH.toFloat()), 36f, 36f, bg)
         canvas.drawText(p.title, pad, pad + 52f, titlePaint)
 
-        val hint = listOf(p.hint(), if (p.showStatus) status else "")
+        // 狀態（含錯誤訊息）放在說明前面：超過 5 行時被截掉的是說明，不是錯誤訊息
+        val hint = listOf(if (p.showStatus) status else "", p.hint())
             .filter { it.isNotBlank() }.joinToString("\n")
         val sl = StaticLayout.Builder.obtain(hint, 0, hint.length, hintPaint, (bmpW - 2 * pad).toInt())
             .setAlignment(Layout.Alignment.ALIGN_NORMAL).setMaxLines(5)

@@ -55,7 +55,13 @@ object InputLog {
                 lastBucket[axis] = bucket
                 if (bucket != 0) {
                     val name = MotionEvent.axisToString(axis).removePrefix("AXIS_")
-                    add("搖桿 $name ${if (bucket > 0) "+" else "−"} · ${dev.name}")
+                    // 播放器只讀左搖桿（X/Y）和十字鍵（HAT_X/HAT_Y）
+                    val use = when (axis) {
+                        MotionEvent.AXIS_X, MotionEvent.AXIS_HAT_X -> if (bucket > 0) "→ 右" else "→ 左"
+                        MotionEvent.AXIS_Y, MotionEvent.AXIS_HAT_Y -> if (bucket > 0) "→ 下" else "→ 上"
+                        else -> "→ App 不使用"
+                    }
+                    add("搖桿 $name ${if (bucket > 0) "+" else "−"} $use · ${dev.name}")
                 }
             }
         }

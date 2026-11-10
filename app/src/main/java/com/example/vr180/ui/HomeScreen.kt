@@ -64,14 +64,14 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
         scope.launch {
             val r = withContext(Dispatchers.IO) {
                 runCatching {
+                    store.saveConnection(c)          // 先存：連線失敗時不用重打帳號密碼
                     SmbRepository.configure(c)
                     SmbRepository.list(c.host, c.share, "")
-                    store.saveConnection(c)
                 }
             }
             busy = false
             r.onSuccess { openSource(SmbFileSource(c)) }
-                .onFailure { error = "連線失敗：${it.message ?: it.javaClass.simpleName}" }
+                .onFailure { error = "連線失敗：" + friendlyError(it) }
         }
     }
 
@@ -153,12 +153,14 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
         }
 
         Spacer(Modifier.height(8.dp))
-        Text("第一次使用請依序完成", style = MaterialTheme.typography.titleMedium)
-        SetupCard("1. 螢幕尺寸校正",
-            if (device.pxPerMm > 0f) "已校正（%.2f 像素/mm）".format(device.pxPerMm) else "尚未校正：眼距與鏡片位置都以毫米計算，這一步錯了後面全錯",
+        Text("設定（都可以跳過，直接看片）", style = MaterialTheme.typography.titleMedium)
+        SetupCard("1. 螢幕尺寸校正（選用）",
+            if (device.pxPerMm > 0f) "已校正（%.2f 像素/mm）".format(device.pxPerMm)
+            else "未校正：使用手機回報的螢幕密度，通常已經夠準。戴上後眼距或位置明顯不對再來做。",
         ) { navigate(Screen.SCREEN_CALIB) }
-        SetupCard("2. 陀螺儀檢測",
-            "漂移 %.2f°/分 · 預測 %.0f ms".format(device.yawDriftDegPerSec * 60f, device.predictionMs),
+        SetupCard("2. 陀螺儀檢測（選用）",
+            "漂移 %.2f°/分 · 預測 %.0f ms。看片時正前方會慢慢跑掉再做；平常長按畫面重新置中就好。"
+                .format(device.yawDriftDegPerSec * 60f, device.predictionMs),
         ) { navigate(Screen.GYRO) }
         val usingDefault = lens.id == LensProfile.CARDBOARD_DEFAULT_ID
         SetupCard(

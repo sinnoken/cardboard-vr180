@@ -1,6 +1,13 @@
 package com.example.vr180.ui
 
 import android.content.Intent
+import android.os.SystemClock
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,13 +71,18 @@ fun BrowserScreen(source: FileSource) {
     var rows by remember { mutableStateOf<List<Row>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var reload by remember { mutableIntStateOf(0) }
+    var lastOpen by remember { mutableLongStateOf(0L) }
     val dirId = stack.last().second
 
-    LaunchedEffect(source, dirId) {
+    // 系統返回鍵／手勢：先退回上一層資料夾，到最上層才回首頁
+    BackHandler(enabled = stack.size > 1) { stack = stack.dropLast(1) }
+
+    LaunchedEffect(source, dirId, reload) {
         loading = true; error = null
         runCatching { withContext(Dispatchers.IO) { group(source.list(dirId)) } }
             .onSuccess { rows = it }
-            .onFailure { error = it.message ?: it.javaClass.simpleName }
+            .onFailure { error = friendlyError(it) }
         loading = false
     }
 
@@ -81,7 +93,13 @@ fun BrowserScreen(source: FileSource) {
         )
         when {
             loading -> CircularProgressIndicator(Modifier.padding(24.dp))
-            error != null -> Text("讀取失敗：$error", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error)
+            error != null -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("讀取失敗：$error", color = MaterialTheme.colorScheme.error)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { reload++ }) { Text("重試") }
+                    if (stack.size > 1) OutlinedButton(onClick = { stack = stack.dropLast(1) }) { Text("上一層") }
+                }
+            }
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 if (stack.size > 1) item {
                     ListItem(headlineContent = { Text("‹ 上一層") },
@@ -98,6 +116,10 @@ fun BrowserScreen(source: FileSource) {
                             headlineContent = { Text(row.base) },
                             supportingContent = { Text(row.variants.joinToString(" · ") { it.first }) },
                             modifier = Modifier.clickable {
+                                // 連點兩下只開一個播放器
+                                val now = SystemClock.uptimeMillis()
+                                if (now - lastOpen < 1500) return@clickable
+                                lastOpen = now
                                 context.startActivity(Intent(context, PlayerActivity::class.java).apply {
                                     putStringArrayListExtra(PlayerActivity.EXTRA_URIS,
                                         ArrayList(row.variants.map { source.playUri(it.second) }))

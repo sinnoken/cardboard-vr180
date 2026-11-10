@@ -52,7 +52,11 @@ object SmbRepository {
         check(host.equals(c.host, ignoreCase = true)) { "沒有 $host 的登入資訊" }
         shares[shareName]?.let { if (it.isConnected) return it }
 
-        val cn = connection?.takeIf { it.isConnected } ?: client.connect(c.host).also {
+        val cn = connection?.takeIf { it.isConnected } ?: run {
+            // 先用 6 秒試連 445 埠：位址打錯時很快就回報，不用等 smbj 的 30 秒逾時
+            java.net.Socket().use { it.connect(java.net.InetSocketAddress(c.host, 445), 6_000) }
+            client.connect(c.host)
+        }.also {
             connection = it; session = null; shares.clear()
         }
         val ss = session ?: cn.authenticate(
