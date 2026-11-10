@@ -23,10 +23,10 @@ jobs:
       - name: 安裝 Android SDK（並接受授權，缺少的平台由 Gradle 自動下載）
         uses: android-actions/setup-android@v4
 
-      - name: 安裝 Gradle 9.5.0（含快取）
+      - name: 安裝 Gradle 9.9.0（含快取）
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: '9.5.0'
+          gradle-version: '9.9.0'
 
       # 選用：固定簽章金鑰。沒設定時每次編譯會用不同的除錯金鑰，
       # 手機上要先移除舊版才能安裝新版。設定方式見 README。
