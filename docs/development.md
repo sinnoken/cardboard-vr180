@@ -57,7 +57,8 @@ android.jar 裡的 `org.json` 只是空殼，測試另外相依 `org.json:json`�
 ## CI（.github/workflows/build.yml）
 
 - 觸發：每次 push（含 tag）、pull request，以及在 Actions 頁面手動執行（`workflow_dispatch`）。
-- 步驟：安裝 JDK 21、Android SDK、指定版本的 Gradle（含快取），算出版本號，
+- 步驟：安裝 JDK 21、Android SDK、指定版本的 Gradle（含快取），用 `glslangValidator` 驗證 `render/Shaders.kt`
+  裡的兩個著色器（它們在 App 執行時才編譯，Gradle 抓不到語法錯誤），算出版本號，
   執行 `gradle testDebugUnitTest assembleDebug`，把 `app/build/outputs/apk/debug/*.apk` 上傳成 artifact `VR180Player-debug`。
 - 固定簽章：Secret `DEBUG_KEYSTORE_BASE64` 有值時，解碼成 `~/.android/debug.keystore`，讓每次建置的簽章相同；
   金鑰的產生方式見 [README](../README.md#固定簽章選用)。

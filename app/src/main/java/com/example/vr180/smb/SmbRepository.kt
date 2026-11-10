@@ -35,15 +35,19 @@ object SmbRepository {
             .build()
     )
 
-    private var conn: SmbConnection? = null
+    @Volatile private var conn: SmbConnection? = null
     private var connection: Connection? = null
     private var session: Session? = null
     private val shares = HashMap<String, DiskShare>()
 
-    @Synchronized fun configure(c: SmbConnection) {
-        if (c != conn) {
-            closeAll()
-            conn = c
+    fun configure(c: SmbConnection) {
+        // 播放器在主執行緒呼叫：設定沒變（幾乎都是這樣）就不碰鎖，免得 NAS 很慢時卡在另一條執行緒的連線上
+        if (c == conn) return
+        synchronized(this) {
+            if (c != conn) {
+                closeAll()
+                conn = c
+            }
         }
     }
 

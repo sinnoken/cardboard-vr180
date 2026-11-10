@@ -7,7 +7,7 @@
 ## 元件與職責
 
 ```
-NAS ──SMB──▶ SmbDataSource（4 MiB 區塊讀取）──┐
+NAS ──SMB──▶ SmbDataSource（2 MiB 區塊讀取）──┐
 本機資料夾 ──▶ ContentDataSource ──────────────┤ RoutingDataSource（依 URI scheme 選擇）
                                                ▼
            ExoPlayer（只允許硬體視訊解碼器；超出能力自動降版）
@@ -101,7 +101,10 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 
 - `DefaultRenderersFactory` 套用 `HardwareOnly.codecSelector`，並開啟 `setEnableDecoderFallback(true)`：解碼器初始化失敗時改試
   優先順序較低的解碼器。候選清單來自選擇器，只有硬體解碼器，所以不會繞到軟體解碼。
-- `DefaultLoadControl`：最少緩衝 15 秒、最多 40 秒，開始播放需 2.5 秒，重新緩衝後需 5 秒。
+- `DefaultLoadControl`：時間上限是最少 15 秒、最多 40 秒；開始播放與跳轉後緩衝 1 秒就播，中途卡住後要緩衝 5 秒。
+  沒有設定 `targetBufferBytes`，緩衝量同時受 Media3 預設的位元組上限約束（視訊加音訊約 144 MB）：
+  位元率超過約 77 Mbps 時，實際緩衝會在 15 秒之前就停（120 Mbps 約 10 秒）。不加大是因為緩衝放在 Java heap，
+  40 秒的 8K 會超過 heap 上限。
 - 跳轉用 `SeekParameters.CLOSEST_SYNC`：落在最近的關鍵幀，不從前一個關鍵幀解到精確位置。
   8K HEVC 的關鍵幀間隔常有數秒，精確跳轉在按住連續跳時幾乎看不到畫面。
 - 相對跳轉（倒退／快轉、左右鍵）在按住期間從上一次的目標位置往下算，不從 `currentPosition` 算，
@@ -109,9 +112,11 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 - 切換影片與降版時保留上一個畫面直到新影片的第一幀：渲染端暫停 `updateTexImage`（`holdVideoFrame`），
   貼圖停在上一支的最後一格；`onRenderedFirstFrame` 時解除。舊解碼器關掉到新影片出第一幀之間，
   有些解碼器會送出空白畫面，不取用才不會閃黑。從 NAS 開新檔要連線與緩衝，這段時間可能長達數秒。
+  同時畫面在約 0.25 秒內平滑調暗到 35%（`dimVideo`、著色器的 `uVideoGain`），新影片第一幀出來後約 0.4 秒恢復，
+  兩支影片亮暗差很多時不會突然刺眼。
 - `ProgressiveMediaSource` 搭配 `RoutingDataSource`，刻意不用 `DefaultDataSource`，播放器只能讀 SMB 與 SAF。
-- `SmbDataSource` 一次向 NAS 讀 4 MiB 進緩衝區再分批交給 ExoPlayer，避免每次幾十 KB 的請求被網路延遲拖垮；
-  smbj 單次讀取的上限由 NAS 協商決定，不足 4 MiB 會繼續讀。
+- `SmbDataSource` 一次向 NAS 讀 2 MiB 進緩衝區再分批交給 ExoPlayer，避免每次幾十 KB 的請求被網路延遲拖垮；
+  smbj 單次讀取的上限由 NAS 協商決定，不足 2 MiB 會繼續讀。區塊不再加大：跳轉後要讀滿一塊才交得出第一個位元組。
 - 開啟 smb 檔時，smbj 錯誤依 NT 狀態碼歸類：`STATUS_OBJECT_NAME_NOT_FOUND`／`STATUS_OBJECT_PATH_NOT_FOUND`
   → `IO_FILE_NOT_FOUND`，`STATUS_ACCESS_DENIED`／`STATUS_LOGON_FAILURE` → `IO_NO_PERMISSION`，
   其他 → `IO_NETWORK_CONNECTION_FAILED`。播放器依錯誤碼顯示原因。
@@ -149,7 +154,9 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 
 - 角速度：相鄰兩個樣本的四元數差（間隔 0.1 ms–100 ms 才採用）換算成裝置座標系角速度，
   以 `ω = 0.6·ω + 0.4·ω_new` 平滑。
-- 預測：`headMatrix(now)` 把方向往前推 `min(now − 最後樣本時間, 50 ms) + predictionMs`。
+- 預測：`headMatrix(now)` 把方向往前推 `min(now − 最後樣本時間, 50 ms) + predictionMs`。`now` 用
+  `SystemClock.elapsedRealtimeNanos()`，跟感測器時間戳同一個時間基準。
+- 每幀取兩次頭部方向：第一次給選單做視線判定（可能接著重畫並上傳貼圖），第二次在那之後才取、用來畫畫面。
 - 座標：依 Activity 建立時的螢幕旋轉（`ROTATION_90`／`ROTATION_270`）重新對應軸，再把 Android 世界
   （東、北、上）換成 GL 世界（x = 東、y = 上、z = 南，眼睛看 −z）。
 - 重新置中：下一幀把目前面向的水平角記為 `yaw0`、完整方向記為 `ref`，並重設漂移計時起點 `tRef`。
@@ -201,7 +208,8 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 
 ### VR 選單面板（VrMenu）
 
-- 面板畫在 1200×1000 的 Bitmap（Android Canvas，可直接用中文字型），有變動而且面板顯示中才重畫並上傳成貼圖；
+- 面板畫在 1200×1000 的 Bitmap（Android Canvas，可直接用中文字型），有變動而且面板顯示中才重畫並上傳成貼圖
+  （尺寸不變時用 `texSubImage2D`，不重新配置）；視線在進度列上的位置變動超過 1.5/200 才算變動；
   收起時的變動留到下次顯示再畫。GL context 重建（新的影片 Surface）時會要求重畫一次。
 - 面板是世界固定的平面：中心方向 `f`、右 `r`、上 `u`，水平半寬 `tan 27°`，保持直立（`r` 在水平面上）。
   主選單放在打開時的視線方向；校正頁放在水平前方往下 36°，正中央的測試圖樣不被擋住。

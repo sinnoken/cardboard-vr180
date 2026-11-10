@@ -308,7 +308,6 @@ class PlayerActivity : ComponentActivity() {
                     // 進度列的左右跟選單關著時走同一個函式，按住的節奏與距離完全一樣
                     if (horizontal && menu.focusedIsSeek()) {
                         holdSeek(if (a == VrAction.LEFT) -1 else 1, heldMs)
-                        menu.invalidate()
                         return
                     }
                     // 數值項目按住左右會加速：越按越多格，校正時不用一格一格慢慢調
@@ -418,7 +417,8 @@ class PlayerActivity : ComponentActivity() {
             .setEnableDecoderFallback(true)
         trackSelector = DefaultTrackSelector(this)
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 40_000, 2_500, 5_000)
+            // 開始／跳轉後緩衝 1 秒就播（Media3 預設值）；中途卡住後要緩衝 5 秒，避免一直斷斷續續
+            .setBufferDurationsMs(15_000, 40_000, 1_000, 5_000)
             .build()
 
         val p = ExoPlayer.Builder(this, renderers)
@@ -478,6 +478,7 @@ class PlayerActivity : ComponentActivity() {
 
             override fun onRenderedFirstFrame() {
                 renderer.holdVideoFrame = false
+                renderer.dimVideo = false
                 renderer.hasVideo = true
             }
         })
@@ -505,8 +506,8 @@ class PlayerActivity : ComponentActivity() {
         trackSelector.setParameters(
             trackSelector.buildUponParameters().setExceedRendererCapabilitiesIfNecessary(isLastVariant()).build()
         )
-        if (keepFrame) renderer.holdVideoFrame = true
-        else { renderer.hasVideo = false; renderer.holdVideoFrame = false }
+        if (keepFrame) { renderer.holdVideoFrame = true; renderer.dimVideo = true }
+        else { renderer.hasVideo = false; renderer.holdVideoFrame = false; renderer.dimVideo = false }
         seekTarget = -1L
         decoderName = "—"; videoSize = "—"
         p.setMediaItem(MediaItem.fromUri(uris[i]))
@@ -613,6 +614,9 @@ class PlayerActivity : ComponentActivity() {
         if (p.duration > 0) target = target.coerceAtMost(p.duration)
         seekTarget = target
         p.seekTo(target)
+        // 進度列與時間馬上顯示新位置，不等每 500 ms 一次的 clock
+        posMs = target
+        refreshStatus()
     }
 
     private fun refreshStatus() {
@@ -726,7 +730,13 @@ class PlayerActivity : ComponentActivity() {
                         step = { d -> runOnUiThread { seekBy(d * 10_000L) } },
                         seekTo = { f ->
                             val dur = durMs
-                            if (dur > 0) runOnUiThread { player?.seekTo((f * dur).toLong()) }
+                            if (dur > 0) runOnUiThread {
+                                val target = (f * dur).toLong()
+                                player?.seekTo(target)
+                                seekTarget = target
+                                posMs = target
+                                refreshStatus()
+                            }
                         },
                     ),
                 ),

@@ -200,7 +200,10 @@ class VrMenu {
                 dirty = true
             }
             if (zone != gazeZone) { gazeZone = zone; dirty = true }
-            if (seek != gazeSeek) { gazeSeek = seek; dirty = true }
+            // 頭部微動會在量化邊界來回跳：差超過 1.5 格才更新，濾掉抖動造成的整張重畫
+            if ((seek < 0f) != (gazeSeek < 0f) || abs(seek - gazeSeek) >= 1.5f / 200f) {
+                gazeSeek = seek; dirty = true
+            }
         }
         // 面板收起時不畫也不上傳貼圖（播放中每秒都會 invalidate）；dirty 留著，下次顯示時再畫
         if (!dirty || !visible) return false

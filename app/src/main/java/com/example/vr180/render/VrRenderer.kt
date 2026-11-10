@@ -7,6 +7,7 @@ import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.opengl.GLUtils
 import android.opengl.Matrix
+import android.os.SystemClock
 import android.view.Surface
 import com.example.vr180.model.LensProfile
 import com.example.vr180.model.SceneCalib
@@ -44,6 +45,14 @@ class VrRenderer(
      */
     @Volatile var holdVideoFrame: Boolean = false
 
+    /**
+     * 切換影片時把畫面平滑調暗（true），新影片出來後平滑恢復（false）。兩支影片亮暗差很多時，
+     * 眼睛不會被突然的亮度變化刺到。
+     */
+    @Volatile var dimVideo: Boolean = false
+    private var videoGain = 1f
+    private var lastFrameNanos = 0L
+
     /** 每幀在 GL 執行緒呼叫，傳入頭部矩陣；選單在這裡做視線判定與重繪。 */
     var frameHook: ((head: FloatArray) -> Unit)? = null
 
@@ -77,7 +86,7 @@ class VrRenderer(
         listOf(
             "uVideo", "uUi", "uTexMatrix", "uWorldFromEye", "uContentFromEye", "uLensCenter",
             "uPxPerTan", "uK", "uMaxTan", "uVideoOffset", "uEye", "uMode", "uHasVideo", "uGuide",
-            "uUiOn", "uUiF", "uUiR", "uUiU", "uUiHalf",
+            "uUiOn", "uUiF", "uUiR", "uUiU", "uUiHalf", "uVideoGain",
         ).forEach { loc[it] = GLES30.glGetUniformLocation(program, it) }
 
         val ids = IntArray(2)
@@ -96,6 +105,7 @@ class VrRenderer(
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
         // 先放一個 1x1 透明貼圖
+        uiTexW = 0; uiTexH = 0
         uploadUi(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888))
 
         val st = SurfaceTexture(videoTex).apply { setOnFrameAvailableListener { frameAvailable = true } }
@@ -107,10 +117,18 @@ class VrRenderer(
         width = w; height = h
     }
 
-    /** 只能在 GL 執行緒呼叫。 */
+    private var uiTexW = 0
+    private var uiTexH = 0
+
+    /** 只能在 GL 執行緒呼叫。尺寸沒變時只更新內容（texSubImage2D），不重新配置 4.8 MB 的貼圖空間。 */
     fun uploadUi(bmp: Bitmap) {
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, uiTex)
-        GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
+        if (bmp.width == uiTexW && bmp.height == uiTexH) {
+            GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, bmp)
+        } else {
+            GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
+            uiTexW = bmp.width; uiTexH = bmp.height
+        }
         GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
     }
 
@@ -120,8 +138,12 @@ class VrRenderer(
             surfaceTexture?.updateTexImage()
             surfaceTexture?.getTransformMatrix(texMatrix)
         }
-        val head = tracker.headMatrix(System.nanoTime())
-        frameHook?.invoke(head)
+        // 感測器時間戳跟 elapsedRealtimeNanos 同一個時間基準（含深度睡眠），用 nanoTime 會讓樣本年齡永遠算成 0
+        frameHook?.invoke(tracker.headMatrix(SystemClock.elapsedRealtimeNanos()))
+        // 選單重畫、上傳貼圖可能花好幾 ms：畫面用的頭部方向在那之後重新取，不拿舊的去畫
+        val now = SystemClock.elapsedRealtimeNanos()
+        val head = tracker.headMatrix(now)
+        updateVideoGain(now)
 
         val l = lens; val s = scene; val m = mode
         val pxmm = pxPerMm
@@ -161,6 +183,7 @@ class VrRenderer(
         GLES30.glUniform1f(loc["uMaxTan"]!!, tan(rad(l.halfFovDeg)))
         GLES30.glUniform1i(loc["uMode"]!!, m.id)
         GLES30.glUniform1i(loc["uHasVideo"]!!, if (hasVideo) 1 else 0)
+        GLES30.glUniform1f(loc["uVideoGain"]!!, videoGain)
         GLES30.glUniform1i(loc["uGuide"]!!, if (guide) 1 else 0)
         GLES30.glUniform1i(loc["uUiOn"]!!, if (uiOn) 1 else 0)
         GLES30.glUniform3fv(loc["uUiF"]!!, 1, uiF, 0)
@@ -192,6 +215,14 @@ class VrRenderer(
         }
     }
 
+    /** 調暗約 0.25 秒到 35%，恢復約 0.4 秒；依實際經過時間計算，跟畫面更新率無關。 */
+    private fun updateVideoGain(now: Long) {
+        val dt = if (lastFrameNanos == 0L) 0f else ((now - lastFrameNanos) * 1e-9f).coerceIn(0f, 0.1f)
+        lastFrameNanos = now
+        videoGain = if (dimVideo) (videoGain - dt * (1f - DIM_GAIN) / 0.25f).coerceAtLeast(DIM_GAIN)
+            else (videoGain + dt * (1f - DIM_GAIN) / 0.4f).coerceAtMost(1f)
+    }
+
     fun release() = releaseSurface()
 
     private fun releaseSurface() {
@@ -219,5 +250,9 @@ class VrRenderer(
         GLES30.glGetProgramiv(p, GLES30.GL_LINK_STATUS, ok, 0)
         check(ok[0] != 0) { "著色器連結失敗：" + GLES30.glGetProgramInfoLog(p) }
         return p
+    }
+
+    private companion object {
+        const val DIM_GAIN = 0.35f   // 切換影片時調暗到的亮度
     }
 }

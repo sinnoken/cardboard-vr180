@@ -12,7 +12,8 @@ import com.hierynomus.smbj.share.File as SmbFile
 /**
  * 讓 ExoPlayer 直接從 SMB 讀檔（原檔直送，不經 NAS 轉檔）。
  * ExoPlayer 每次只要幾十 KB，若每次都發一個 SMB 請求會被網路延遲拖垮，
- * 所以這裡一次讀 4 MB 進緩衝區再分批交出去，高位元率的 8K 影片才跑得動。
+ * 所以這裡一次讀 2 MB 進緩衝區再分批交出去，高位元率的 8K 影片才跑得動。
+ * 不用更大：跳轉後要讀滿一整塊才交得出第一個位元組，4 MB 在 Wi-Fi 上會讓跳轉後的首幀多等約 0.1–0.3 秒。
  */
 class SmbDataSource : BaseDataSource(/* isNetwork = */ true) {
     private var uri: Uri? = null
@@ -110,6 +111,6 @@ class SmbDataSource : BaseDataSource(/* isNetwork = */ true) {
             }
         }
 
-        const val CHUNK_SIZE = 4 * 1024 * 1024
+        const val CHUNK_SIZE = 2 * 1024 * 1024
     }
 }

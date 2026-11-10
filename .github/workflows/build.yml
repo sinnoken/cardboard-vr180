@@ -33,6 +33,20 @@ jobs:
         with:
           gradle-version: '9.9.0'
 
+      # 著色器在 App 執行時才編譯，Gradle 建置抓不到語法錯誤：這裡先用 Khronos 的 glslang 驗證
+      - name: 驗證著色器（glslang）
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq glslang-tools > /dev/null
+          python3 - <<'EOF'
+          import re
+          s = open('app/src/main/java/com/example/vr180/render/Shaders.kt', encoding='utf-8').read()
+          for name, ext in (('VERTEX', 'vert'), ('FRAGMENT', 'frag')):
+              src = re.search(r'const val %s = """(.*?)"""' % name, s, re.S).group(1)
+              open('/tmp/shader.' + ext, 'w', encoding='utf-8').write(src)
+          EOF
+          glslangValidator /tmp/shader.vert
+          glslangValidator /tmp/shader.frag
+
       # 版本號由最近的 vX.Y.Z tag 與之後的 commit 數算出，規則見 docs/development.md
       - name: 計算版本號
         id: version
