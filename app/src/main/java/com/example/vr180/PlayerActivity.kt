@@ -476,7 +476,10 @@ class PlayerActivity : ComponentActivity() {
                 if (size.width > 0) { videoSize = "${size.width}×${size.height}"; refreshStatus() }
             }
 
-            override fun onRenderedFirstFrame() { renderer.hasVideo = true }
+            override fun onRenderedFirstFrame() {
+                renderer.holdVideoFrame = false
+                renderer.hasVideo = true
+            }
         })
         p.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoDecoderInitialized(
@@ -502,7 +505,8 @@ class PlayerActivity : ComponentActivity() {
         trackSelector.setParameters(
             trackSelector.buildUponParameters().setExceedRendererCapabilitiesIfNecessary(isLastVariant()).build()
         )
-        if (!keepFrame) renderer.hasVideo = false
+        if (keepFrame) renderer.holdVideoFrame = true
+        else { renderer.hasVideo = false; renderer.holdVideoFrame = false }
         seekTarget = -1L
         decoderName = "—"; videoSize = "—"
         p.setMediaItem(MediaItem.fromUri(uris[i]))

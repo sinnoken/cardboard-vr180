@@ -106,7 +106,9 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
   8K HEVC 的關鍵幀間隔常有數秒，精確跳轉在按住連續跳時幾乎看不到畫面。
 - 相對跳轉（倒退／快轉、左右鍵）在按住期間從上一次的目標位置往下算，不從 `currentPosition` 算，
   避免對齊關鍵幀後又跳回同一個位置。
-- 切換影片與降版時保留上一個畫面直到新影片的第一幀，不先畫成黑色。
+- 切換影片與降版時保留上一個畫面直到新影片的第一幀：渲染端暫停 `updateTexImage`（`holdVideoFrame`），
+  貼圖停在上一支的最後一格；`onRenderedFirstFrame` 時解除。舊解碼器關掉到新影片出第一幀之間，
+  有些解碼器會送出空白畫面，不取用才不會閃黑。從 NAS 開新檔要連線與緩衝，這段時間可能長達數秒。
 - `ProgressiveMediaSource` 搭配 `RoutingDataSource`，刻意不用 `DefaultDataSource`，播放器只能讀 SMB 與 SAF。
 - `SmbDataSource` 一次向 NAS 讀 4 MiB 進緩衝區再分批交給 ExoPlayer，避免每次幾十 KB 的請求被網路延遲拖垮；
   smbj 單次讀取的上限由 NAS 協商決定，不足 4 MiB 會繼續讀。

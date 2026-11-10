@@ -38,6 +38,12 @@ class VrRenderer(
     @Volatile var guide: Boolean = false
     @Volatile var hasVideo: Boolean = false
 
+    /**
+     * 切換影片時暫停取用新畫面，貼圖停在上一支的最後一格。舊解碼器關掉到新影片第一幀之間，
+     * 有些解碼器會送出空白或黑色的畫面；不取用就不會閃黑。新影片第一幀出來時由播放器解除。
+     */
+    @Volatile var holdVideoFrame: Boolean = false
+
     /** 每幀在 GL 執行緒呼叫，傳入頭部矩陣；選單在這裡做視線判定與重繪。 */
     var frameHook: ((head: FloatArray) -> Unit)? = null
 
@@ -109,7 +115,7 @@ class VrRenderer(
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        if (frameAvailable) {
+        if (frameAvailable && !holdVideoFrame) {
             frameAvailable = false
             surfaceTexture?.updateTexImage()
             surfaceTexture?.getTransformMatrix(texMatrix)
