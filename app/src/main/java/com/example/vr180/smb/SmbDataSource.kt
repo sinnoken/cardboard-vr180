@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.BaseDataSource
-import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import java.io.IOException
@@ -42,7 +41,7 @@ class SmbDataSource : BaseDataSource(/* isNetwork = */ true) {
         } catch (e: IOException) {
             throw e
         } catch (e: Exception) {
-            throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+            throw DataSourceException(e, openErrorCode(e))
         }
         chunkLen = 0
         opened = true
@@ -98,11 +97,19 @@ class SmbDataSource : BaseDataSource(/* isNetwork = */ true) {
         }
     }
 
-    class Factory : DataSource.Factory {
-        override fun createDataSource(): DataSource = SmbDataSource()
-    }
-
     companion object {
+        /** smbj 的錯誤訊息帶 NT 狀態碼名稱：找不到檔案、沒有權限要跟網路斷線分開，播放器才顯示得出真正原因。 */
+        private fun openErrorCode(e: Exception): Int {
+            val text = generateSequence<Throwable>(e) { it.cause }.take(8).joinToString(" ") { it.message.orEmpty() }
+            return when {
+                "STATUS_OBJECT_NAME_NOT_FOUND" in text || "STATUS_OBJECT_PATH_NOT_FOUND" in text ->
+                    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND
+                "STATUS_ACCESS_DENIED" in text || "STATUS_LOGON_FAILURE" in text ->
+                    PlaybackException.ERROR_CODE_IO_NO_PERMISSION
+                else -> PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+            }
+        }
+
         const val CHUNK_SIZE = 4 * 1024 * 1024
     }
 }
