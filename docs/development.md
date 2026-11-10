@@ -57,8 +57,9 @@ android.jar 裡的 `org.json` 只是空殼，測試另外相依 `org.json:json`�
 ## CI（.github/workflows/build.yml）
 
 - 觸發：每次 push（含 tag）、pull request，以及在 Actions 頁面手動執行（`workflow_dispatch`）。
-- 去重：先查這個 commit 有沒有成功的建置，有就跳過整個建置（例如分支驗證後 fast-forward 合併到 `main`，
-  同一個 commit 不再建一次）。tag 與手動執行一律建置。
+  只改 `docs/` 或 `*.md` 的 push 與 pull request 不建置；tag 不受這條限制。
+- 去重：同一個 commit 已經有更早的一次建置成功或正在跑，就跳過整個建置（例如 fast-forward 合併到 `main`）。
+  只看更早的建置，兩個同時推的建置不會互相跳過。tag 與手動執行一律建置。
 - 步驟：安裝 JDK 21、Android SDK、指定版本的 Gradle（含快取），用 `glslangValidator` 驗證 `render/Shaders.kt`
   裡的兩個著色器（它們在 App 執行時才編譯，Gradle 抓不到語法錯誤），算出版本號，
   執行 `gradle testDebugUnitTest assembleDebug`，把 `app/build/outputs/apk/debug/*.apk` 上傳成 artifact `VR180Player-debug`。
@@ -78,6 +79,10 @@ gh release create vX.Y.Z --target <commit> --prerelease --title "vX.Y.Z（除錯
 ```
 
 tag 一建立就會觸發 CI，APK 會自動附上去。
+
+要發行的改動不必先推分支等 CI：直接在要發的 commit 建立 Release，tag 那次建置同時驗證（測試、著色器）
+與產出 APK；通過後再 fast-forward 合併到 `main`，`main` 那次會被去重跳過。一次發行只建置一次。
+建置失敗時 Release 沒有 APK，修正後用新的 commit 與新的版本號重發。
 
 ## 測試工具
 

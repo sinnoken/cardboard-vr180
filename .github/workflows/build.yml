@@ -1,15 +1,19 @@
 # 在 GitHub 雲端編譯 APK：每次推送程式碼都會自動執行，也可以在 Actions 頁面手動按「Run workflow」。
 # 推 v* tag 時另外把 APK 附到同名的 GitHub Release（沒有就建立一個預先發行版）。
-# 同一個 commit 已經建置成功過就跳過（tag 與手動執行除外）。
+# 只改文件（docs/、*.md）不建置；同一個 commit 已有更早的建置成功或正在跑就跳過（tag 與手動執行除外）。
 name: Build APK
 
 on:
   push:
+    # tag 不受路徑篩選影響（GitHub 對 tag push 不看 paths），發行一定會建置
+    paths-ignore: ['docs/**', '**.md']
   pull_request:
+    paths-ignore: ['docs/**', '**.md']
   workflow_dispatch:
 
 jobs:
-  # 同一個 commit 已經成功建置過就不再建置（例如分支驗證後 fast-forward 合併到 main）。
+  # 去重：同一個 commit 已經有更早的一次建置成功或正在跑，就不再建置
+  # （例如先打 tag 發行，再 fast-forward 合併到 main）。只看更早的，兩個同時推的建置才不會互相跳過。
   # tag 一律建置：要編出正式版本號的 APK 附到 Release；手動執行也一律建置。
   check:
     runs-on: ubuntu-latest
@@ -19,15 +23,17 @@ jobs:
     outputs:
       skip: ${{ steps.dup.outputs.skip }}
     steps:
-      - name: 檢查這個 commit 是否已建置成功
+      - name: 檢查這個 commit 是否已建置過
         id: dup
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           skip=false
           if [ "$GITHUB_REF_TYPE" != tag ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
-            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$GITHUB_SHA&status=success"               -q '.total_count' || echo 0)
-            if [ "$n" -gt 0 ]; then skip=true; echo "這個 commit 已經建置成功過，跳過"; fi
+            q="[.workflow_runs[] | select(.id < $GITHUB_RUN_ID)"
+            q="$q | select(.status != \"completed\" or .conclusion == \"success\")] | length"
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$GITHUB_SHA&per_page=50"               -q "$q" || echo 0)
+            if [ "$n" -gt 0 ]; then skip=true; echo "這個 commit 已有更早的建置成功或正在跑，跳過"; fi
           fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
 
