@@ -1,5 +1,6 @@
 # 在 GitHub 雲端編譯 APK：每次推送程式碼都會自動執行，也可以在 Actions 頁面手動按「Run workflow」。
 # 推 v* tag 時另外把 APK 附到同名的 GitHub Release（沒有就建立一個預先發行版）。
+# 同一個 commit 已經建置成功過就跳過（tag 與手動執行除外）。
 name: Build APK
 
 on:
@@ -8,7 +9,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  # 同一個 commit 已經成功建置過就不再建置（例如分支驗證後 fast-forward 合併到 main）。
+  # tag 一律建置：要編出正式版本號的 APK 附到 Release；手動執行也一律建置。
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      skip: ${{ steps.dup.outputs.skip }}
+    steps:
+      - name: 檢查這個 commit 是否已建置成功
+        id: dup
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          skip=false
+          if [ "$GITHUB_REF_TYPE" != tag ] && [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$GITHUB_SHA&status=success"               -q '.total_count' || echo 0)
+            if [ "$n" -gt 0 ]; then skip=true; echo "這個 commit 已經建置成功過，跳過"; fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
