@@ -1,0 +1,108 @@
+package com.example.vr180.smb
+
+import android.net.Uri
+import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.BaseDataSource
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSourceException
+import androidx.media3.datasource.DataSpec
+import java.io.IOException
+import com.hierynomus.smbj.share.File as SmbFile
+
+/**
+ * 讓 ExoPlayer 直接從 SMB 讀檔（原檔直送，不經 NAS 轉檔）。
+ * ExoPlayer 每次只要幾十 KB，若每次都發一個 SMB 請求會被網路延遲拖垮，
+ * 所以這裡一次讀 4 MB 進緩衝區再分批交出去，高位元率的 8K 影片才跑得動。
+ */
+class SmbDataSource : BaseDataSource(/* isNetwork = */ true) {
+    private var uri: Uri? = null
+    private var file: SmbFile? = null
+    private var position = 0L
+    private var bytesRemaining = 0L
+    private var opened = false
+
+    private val chunk = ByteArray(CHUNK_SIZE)
+    private var chunkStart = 0L
+    private var chunkLen = 0
+
+    override fun open(dataSpec: DataSpec): Long {
+        uri = dataSpec.uri
+        transferInitializing(dataSpec)
+        try {
+            val f = SmbRepository.openRead(dataSpec.uri)
+            file = f
+            val size = f.fileInformation.standardInformation.endOfFile
+            if (dataSpec.position > size) {
+                throw DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
+            }
+            position = dataSpec.position
+            bytesRemaining =
+                if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else size - position
+        } catch (e: IOException) {
+            throw e
+        } catch (e: Exception) {
+            throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+        }
+        chunkLen = 0
+        opened = true
+        transferStarted(dataSpec)
+        return bytesRemaining
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        if (bytesRemaining == 0L) return C.RESULT_END_OF_INPUT
+        if (position < chunkStart || position >= chunkStart + chunkLen) fillChunk()
+        if (chunkLen == 0) return C.RESULT_END_OF_INPUT
+
+        val idx = (position - chunkStart).toInt()
+        val n = minOf(length.toLong(), (chunkLen - idx).toLong(), bytesRemaining).toInt()
+        System.arraycopy(chunk, idx, buffer, offset, n)
+        position += n
+        bytesRemaining -= n
+        bytesTransferred(n)
+        return n
+    }
+
+    private fun fillChunk() {
+        val f = file ?: throw IOException("檔案尚未開啟")
+        chunkStart = position
+        var filled = 0
+        try {
+            // smbj 每次最多讀到 NAS 協商的上限（通常 1–8 MB），不足就繼續讀
+            while (filled < CHUNK_SIZE) {
+                val r = f.read(chunk, position + filled, filled, CHUNK_SIZE - filled)
+                if (r <= 0) break
+                filled += r
+            }
+        } catch (e: Exception) {
+            throw DataSourceException(e, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+        }
+        chunkLen = filled
+    }
+
+    override fun getUri(): Uri? = uri
+
+    override fun close() {
+        uri = null
+        try {
+            file?.close()
+        } catch (_: Exception) {
+        } finally {
+            file = null
+            if (opened) {
+                opened = false
+                transferEnded()
+            }
+        }
+    }
+
+    class Factory : DataSource.Factory {
+        override fun createDataSource(): DataSource = SmbDataSource()
+    }
+
+    companion object {
+        const val CHUNK_SIZE = 4 * 1024 * 1024
+    }
+}
