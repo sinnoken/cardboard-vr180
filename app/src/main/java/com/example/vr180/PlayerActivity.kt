@@ -203,6 +203,7 @@ class PlayerActivity : ComponentActivity() {
         loadScene()
         createPlayer()
         playVariant(0)
+        resumeSavedPosition()
     }
 
     override fun onResume() {
@@ -219,6 +220,7 @@ class PlayerActivity : ComponentActivity() {
         ui.removeCallbacks(clock)
         tracker.stop()
         glView.onPause()
+        saveCurrentPosition()
         player?.pause()
     }
 
@@ -469,7 +471,10 @@ class PlayerActivity : ComponentActivity() {
                 playerEnded = state == Player.STATE_ENDED
                 if (state == Player.STATE_READY) playerFailed = false
                 refreshStatus()
-                if (playerEnded) glView.queueEvent { if (!menu.visible) showMenu() }
+                if (playerEnded) {
+                    saveCurrentPosition()   // 播完：紀錄會被刪掉，下次從頭
+                    glView.queueEvent { if (!menu.visible) showMenu() }
+                }
             }
 
             override fun onVideoSizeChanged(size: VideoSize) {
@@ -576,6 +581,7 @@ class PlayerActivity : ComponentActivity() {
             return
         }
         val item = items[i]
+        saveCurrentPosition()
         playlistIndex = i
         uris = item.uris
         labels = item.labels
@@ -585,6 +591,27 @@ class PlayerActivity : ComponentActivity() {
         sceneLoaded = false
         loadScene()
         playVariant(0, keepFrame = true)
+        resumeSavedPosition()
+    }
+
+    /** 主執行緒：記住目前這支影片看到哪裡（還沒開始播或出錯時不記，免得蓋掉原本的紀錄）。 */
+    private fun saveCurrentPosition() {
+        val p = player ?: return
+        if (!started || playerFailed) return
+        val key = sceneKey
+        val pos = p.currentPosition
+        val dur = p.duration.takeIf { it > 0 } ?: -1L
+        io.execute { store.savePosition(key, pos, dur) }
+    }
+
+    /** 主執行緒：剛開始播一支影片時，有紀錄就接著上次的位置。 */
+    private fun resumeSavedPosition() {
+        val pos = store.loadPosition(sceneKey) ?: return
+        player?.seekTo(pos)
+        seekTarget = pos
+        posMs = pos
+        message = "從 ${fmtTime(pos)} 繼續"
+        refreshStatus()
     }
 
     /** 主執行緒：調整媒體音量。VR 裡看不到系統音量面板，所以不顯示，改寫在選單狀態列。 */

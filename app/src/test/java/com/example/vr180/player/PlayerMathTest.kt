@@ -16,6 +16,14 @@ class PlayerMathTest {
         assertEquals(300_000L, seekStepMs(60_000))
     }
 
+    @Test fun resumesOnlyMeaningfulPositions() {
+        assertEquals(false, worthResuming(4_999, 3_600_000))      // 才剛開始
+        assertEquals(true, worthResuming(5_000, 3_600_000))
+        assertEquals(true, worthResuming(3_569_999, 3_600_000))   // 離結束還有 30 秒以上
+        assertEquals(false, worthResuming(3_570_000, 3_600_000))  // 最後 30 秒：當作看完
+        assertEquals(true, worthResuming(600_000, -1))            // 片長不明
+    }
+
     @Test fun stepperAccelerates() {
         assertEquals(listOf(1, 3, 6, 12), listOf(0L, 1_000L, 2_000L, 3_000L).map(::stepsFor))
     }

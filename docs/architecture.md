@@ -130,6 +130,9 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 播放器開啟後先 `prepare()` 但不播放，提示面板跟著視線移動。第一個動作（不含連發）觸發開始：
 返回動作結束播放器，其他動作重新置中並開始播放。
 
+開啟影片與切換上一支／下一支時，`positions.json` 有這支影片的紀錄就先 `seekTo` 到該位置（續播）；
+切換前、`onPause`、播完時寫回目前位置。格式與規則見 [data-formats.md](data-formats.md#positionsjson)。
+
 ### 版本選擇與降版
 
 - `playVariant(i)` 播第 i 個版本。只有最後一個版本設 `setExceedRendererCapabilitiesIfNecessary(true)`，

@@ -56,6 +56,10 @@ fun changeLensAlignment(l: LensProfile, to: VerticalAlignment, screenHeightMm: F
     return l.copy(alignment = to, lensHeightMm = value)
 }
 
+/** 續播：看不到 5 秒不記；看到最後 30 秒當作看完，下次從頭。durMs ≤ 0（片長不明）時只看前一條。 */
+fun worthResuming(posMs: Long, durMs: Long): Boolean =
+    posMs >= 5_000 && (durMs <= 0 || posMs < durMs - 30_000)
+
 /** 角度換到 (-180, 180]。 */
 fun wrap180(v: Float): Float {
     var x = v

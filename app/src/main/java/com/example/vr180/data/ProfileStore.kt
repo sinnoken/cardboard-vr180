@@ -2,6 +2,7 @@ package com.example.vr180.data
 
 import android.content.Context
 import com.example.vr180.input.ControllerChoice
+import com.example.vr180.player.worthResuming
 import com.example.vr180.model.DeviceCalib
 import com.example.vr180.model.LensProfile
 import com.example.vr180.model.SceneCalib
@@ -111,6 +112,27 @@ class ProfileStore(context: Context) {
         saveLenses(Lenses(list, p.id))
     }
 
+    /** 影片最後播放位置。key 跟場景校正相同（同一支影片的各版本共用），存的是 SHA-1。 */
+    @Synchronized fun loadPosition(key: String): Long? {
+        val h = hash(key)
+        val arr = read("positions.json")?.optJSONArray("items") ?: return null
+        return (0 until arr.length()).map { arr.optJSONObject(it) }
+            .firstOrNull { it?.optString("key") == h }?.optLong("posMs")
+    }
+
+    /** 記住位置（最新的排最前面，只留 MAX_POSITIONS 筆）；不值得續播時刪掉這支的紀錄。 */
+    @Synchronized fun savePosition(key: String, posMs: Long, durMs: Long) {
+        val h = hash(key)
+        val old = read("positions.json")?.optJSONArray("items")
+        val others = (0 until (old?.length() ?: 0)).mapNotNull { old?.optJSONObject(it) }
+            .filter { it.optString("key") != h }
+        val keep = if (worthResuming(posMs, durMs)) {
+            listOf(JSONObject().put("key", h).put("posMs", posMs).put("durMs", durMs)) + others
+        } else others
+        val arr = JSONArray().apply { keep.take(MAX_POSITIONS).forEach { put(it) } }
+        write("positions.json", JSONObject().put("items", arr))
+    }
+
     @Synchronized fun loadScene(key: String): SceneCalib? =
         readFile(File(sceneDir, hash(key) + ".json"))?.let(SceneCalib::fromJson)
 
@@ -133,4 +155,8 @@ class ProfileStore(context: Context) {
     private fun hash(s: String): String =
         MessageDigest.getInstance("SHA-1").digest(s.toByteArray())
             .joinToString("") { "%02x".format(it) }
+
+    private companion object {
+        const val MAX_POSITIONS = 200
+    }
 }
