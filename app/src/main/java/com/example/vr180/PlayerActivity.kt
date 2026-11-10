@@ -77,6 +77,7 @@ class PlayerActivity : ComponentActivity() {
     private val io = Executors.newSingleThreadExecutor()
 
     private var player: ExoPlayer? = null
+    private lateinit var trackSelector: DefaultTrackSelector
     private var videoSurface: Surface? = null
 
     private var uris = listOf<String>()
@@ -338,9 +339,7 @@ class PlayerActivity : ComponentActivity() {
         val renderers = DefaultRenderersFactory(this)
             .setMediaCodecSelector(HardwareOnly.codecSelector)
             .setEnableDecoderFallback(false)
-        val trackSelector = DefaultTrackSelector(this).apply {
-            setParameters(buildUponParameters().setExceedRendererCapabilitiesIfNecessary(false).build())
-        }
+        trackSelector = DefaultTrackSelector(this)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 40_000, 2_500, 5_000)
             .build()
@@ -353,9 +352,15 @@ class PlayerActivity : ComponentActivity() {
 
         p.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
-                if (tracks.containsType(C.TRACK_TYPE_VIDEO) &&
-                    !tracks.isTypeSupported(C.TRACK_TYPE_VIDEO, /* allowExceedsCapabilities = */ false)
-                ) fallback("硬體解碼器不支援此解析度或格式")
+                if (!tracks.containsType(C.TRACK_TYPE_VIDEO) ||
+                    tracks.isTypeSupported(C.TRACK_TYPE_VIDEO, /* allowExceedsCapabilities = */ false)
+                ) return
+                if (isLastVariant()) {
+                    message = "超出硬體解碼器宣告的能力，仍嘗試播放"
+                    refreshStatus()
+                } else {
+                    fallback("硬體解碼器宣告不支援此解析度或格式")
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -411,6 +416,11 @@ class PlayerActivity : ComponentActivity() {
     private fun playVariant(i: Int) {
         val p = player ?: return
         variantIndex = i
+        // 解碼器宣告的上限常比實際能力保守（例如宣告 8K30，實際解得了 8K60）。
+        // 還有較低版本時照宣告降版；已是最後一個版本就照樣嘗試，真的解不了會走 onPlayerError。
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters().setExceedRendererCapabilitiesIfNecessary(isLastVariant()).build()
+        )
         renderer.hasVideo = false
         decoderName = "—"; videoSize = "—"
         p.setMediaItem(MediaItem.fromUri(uris[i]))
@@ -418,6 +428,8 @@ class PlayerActivity : ComponentActivity() {
         p.playWhenReady = started
         refreshStatus()
     }
+
+    private fun isLastVariant() = variantIndex == uris.lastIndex
 
     /** 目前版本無法硬解時，自動改播下一個較低解析度的版本。 */
     private fun fallback(reason: String) {
