@@ -26,6 +26,7 @@ import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -289,10 +290,8 @@ class PlayerActivity : ComponentActivity() {
                         // 鏡片校正面板收起時畫面是測試圖樣，左右改成切換圖樣（單手配置沒有倒退／快轉鍵）
                         VrAction.LEFT, VrAction.RIGHT -> if (menu.concealed && menu.page === lensPage) {
                             if (heldMs == 0L) cyclePattern(if (a == VrAction.LEFT) -1 else 1)
-                        // 按住左右：最多每 0.4 秒跳一次，按越久跳越遠
-                        } else if (seekAllowed(heldMs)) {
-                            val ms = seekStepMs(heldMs) * if (a == VrAction.LEFT) -1 else 1
-                            runOnUiThread { seekBy(ms) }
+                        } else {
+                            holdSeek(if (a == VrAction.LEFT) -1 else 1, heldMs)
                         }
                         // 上下：上一支／下一支。按住不連續切換；校正面板收起時不切，免得修改跟著影片一起丟掉
                         VrAction.UP, VrAction.DOWN -> if (heldMs == 0L && !menu.concealed) {
@@ -306,10 +305,11 @@ class PlayerActivity : ComponentActivity() {
                 } else {
                     val nav = a.toNav() ?: return
                     val horizontal = a == VrAction.LEFT || a == VrAction.RIGHT
-                    // 進度列按住左右跟選單關著時一樣節流，避免每 90ms 就對 NAS 發一次 seek
+                    // 進度列的左右跟選單關著時走同一個函式，按住的節奏與距離完全一樣
                     if (horizontal && menu.focusedIsSeek()) {
-                        if (!seekAllowed(heldMs)) return
-                        seekBarStepMs = seekStepMs(heldMs)
+                        holdSeek(if (a == VrAction.LEFT) -1 else 1, heldMs)
+                        menu.invalidate()
+                        return
                     }
                     // 數值項目按住左右會加速：越按越多格，校正時不用一格一格慢慢調
                     val times = if ((a == VrAction.LEFT || a == VrAction.RIGHT) && menu.focusedIsStepper())
@@ -348,8 +348,16 @@ class PlayerActivity : ComponentActivity() {
         return true
     }
 
-    /** GL 執行緒：進度列這次左右要跳多遠（依按住時間，見 seekStepMs）。 */
-    private var seekBarStepMs = 10_000L
+    /**
+     * GL 執行緒：倒退／快轉鍵或左右鍵按下與按住。按住時最多每 SEEK_HOLD_INTERVAL_MS 跳一次，
+     * 距離依按住時間（seekStepMs）；按住期間從上一次的目標往下算（見 seekBy）。
+     */
+    private fun holdSeek(dir: Int, heldMs: Long) {
+        if (!seekAllowed(heldMs)) return
+        val ms = seekStepMs(heldMs) * dir
+        val continuing = heldMs > 0L
+        runOnUiThread { seekBy(ms, continuing) }
+    }
 
     private fun VrAction.toNav(): NavAction? = when (this) {
         VrAction.UP -> NavAction.UP
@@ -418,6 +426,9 @@ class PlayerActivity : ComponentActivity() {
             .setLoadControl(loadControl)
             .setMediaSourceFactory(ProgressiveMediaSource.Factory(RoutingDataSource.Factory(this)))
             .build()
+        // 8K HEVC 的關鍵幀間隔常有好幾秒：精確跳轉要從前一個關鍵幀解到目標，按住連續跳時幾乎看不到畫面。
+        // 跳到最近的關鍵幀快很多，誤差一兩秒對看片沒有影響
+        p.setSeekParameters(SeekParameters.CLOSEST_SYNC)
 
         p.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
@@ -482,7 +493,8 @@ class PlayerActivity : ComponentActivity() {
         player = p
     }
 
-    private fun playVariant(i: Int) {
+    /** keepFrame：切換影片或降版時保留上一個畫面直到新的第一幀，不先變黑（避免閃一下）。 */
+    private fun playVariant(i: Int, keepFrame: Boolean = false) {
         val p = player ?: return
         variantIndex = i
         // 解碼器宣告的上限常比實際能力保守（例如宣告 8K30，實際解得了 8K60）。
@@ -490,7 +502,8 @@ class PlayerActivity : ComponentActivity() {
         trackSelector.setParameters(
             trackSelector.buildUponParameters().setExceedRendererCapabilitiesIfNecessary(isLastVariant()).build()
         )
-        renderer.hasVideo = false
+        if (!keepFrame) renderer.hasVideo = false
+        seekTarget = -1L
         decoderName = "—"; videoSize = "—"
         p.setMediaItem(MediaItem.fromUri(uris[i]))
         p.prepare()
@@ -508,7 +521,7 @@ class PlayerActivity : ComponentActivity() {
             message = "${labels.getOrElse(variantIndex) { "此版本" }} 無法硬解（$reason），改播較低解析度"
             // 播到一半才失敗（過熱、暫時性錯誤）時從原位置接著播，不回到片頭
             val pos = player?.currentPosition ?: 0L
-            playVariant(variantIndex + 1)
+            playVariant(variantIndex + 1, keepFrame = true)
             if (pos > 0) player?.seekTo(pos)
         } else {
             message = "這支手機無法硬體解碼這支影片的任何版本（$reason）。請轉成較低解析度，例如 5.7K。"
@@ -566,7 +579,7 @@ class PlayerActivity : ComponentActivity() {
         failedVariant = -1; playerFailed = false; playerEnded = false; message = ""
         sceneLoaded = false
         loadScene()
-        playVariant(0)
+        playVariant(0, keepFrame = true)
     }
 
     /** 主執行緒：調整媒體音量。VR 裡看不到系統音量面板，所以不顯示，改寫在選單狀態列。 */
@@ -582,9 +595,20 @@ class PlayerActivity : ComponentActivity() {
         if (p.isPlaying) p.pause() else p.play()
     }
 
-    private fun seekBy(ms: Long) {
+    /** 主執行緒：上一次跳轉的目標位置，按住連續跳時用。 */
+    private var seekTarget = -1L
+
+    /**
+     * 主執行緒：相對跳轉。播放器設成跳到最近的關鍵幀（CLOSEST_SYNC），位置可能前後差一兩秒；
+     * continuing（按住連續跳）時從上一次的目標往下算，不會因為對齊關鍵幀而卡在同一個位置。
+     */
+    private fun seekBy(ms: Long, continuing: Boolean = false) {
         val p = player ?: return
-        p.seekTo((p.currentPosition + ms).coerceAtLeast(0L))
+        val base = if (continuing && seekTarget >= 0) seekTarget else p.currentPosition
+        var target = (base + ms).coerceAtLeast(0L)
+        if (p.duration > 0) target = target.coerceAtMost(p.duration)
+        seekTarget = target
+        p.seekTo(target)
     }
 
     private fun refreshStatus() {
@@ -695,7 +719,7 @@ class PlayerActivity : ComponentActivity() {
                     MenuItem.Seek(
                         label = { fmtTime(posMs) + " / " + if (durMs > 0) fmtTime(durMs) else "--:--" },
                         fraction = { if (durMs > 0) posMs.toFloat() / durMs else -1f },
-                        step = { d -> val ms = d * seekBarStepMs; runOnUiThread { seekBy(ms) } },
+                        step = { d -> runOnUiThread { seekBy(d * 10_000L) } },
                         seekTo = { f ->
                             val dur = durMs
                             if (dur > 0) runOnUiThread { player?.seekTo((f * dur).toLong()) }
