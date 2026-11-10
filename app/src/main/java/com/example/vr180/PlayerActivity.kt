@@ -415,7 +415,8 @@ class PlayerActivity : ComponentActivity() {
     private fun createPlayer() {
         val renderers = DefaultRenderersFactory(this)
             .setMediaCodecSelector(HardwareOnly.codecSelector)
-            .setEnableDecoderFallback(false)
+            // 初始化失敗時改試優先順序較低的解碼器。清單來自上面的選擇器，只有硬體解碼器，不會繞到軟體解碼
+            .setEnableDecoderFallback(true)
         trackSelector = DefaultTrackSelector(this)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(15_000, 40_000, 2_500, 5_000)
@@ -514,7 +515,10 @@ class PlayerActivity : ComponentActivity() {
         failedVariant = variantIndex
         if (variantIndex + 1 < uris.size) {
             message = "${labels.getOrElse(variantIndex) { "此版本" }} 無法硬解（$reason），改播較低解析度"
+            // 播到一半才失敗（過熱、暫時性錯誤）時從原位置接著播，不回到片頭
+            val pos = player?.currentPosition ?: 0L
             playVariant(variantIndex + 1)
+            if (pos > 0) player?.seekTo(pos)
         } else {
             message = "這支手機無法硬體解碼這支影片的任何版本（$reason）。請轉成較低解析度，例如 5.7K。"
             playerFailed = true

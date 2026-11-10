@@ -80,7 +80,7 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
    只有換資料夾、切換「包含子資料夾」或重試才重新掃描；排序與「隱藏小於 100 MB」套用在記憶體裡的掃描結果。
    掃描中換資料夾或改選項時，舊的掃描被取消，不顯示成讀取失敗。
 2. 同一資料夾、同一基本名稱的檔案歸成一支影片，版本依解析度標記由高到低排序
-   （`8K` > `6K` > `5.7K` > `4K` > 沒有標記）。標記規則見 [README 的「檔案慣例」](../README.md#檔案慣例)。
+   （沒有標記的原檔 > `8K` > `6K` > `5.7K` > `4K`）。標記規則見 [README 的「檔案慣例」](../README.md#檔案慣例)。
 3. 點選影片時以 Intent 啟動 `PlayerActivity`（1.5 秒內重複點選只開一次）：
 
    | Extra | 內容 |
@@ -99,7 +99,8 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 
 ### 播放器
 
-- `DefaultRenderersFactory` 套用 `HardwareOnly.codecSelector`，並關閉解碼器失敗時改用其他解碼器（`setEnableDecoderFallback(false)`）。
+- `DefaultRenderersFactory` 套用 `HardwareOnly.codecSelector`，並開啟 `setEnableDecoderFallback(true)`：解碼器初始化失敗時改試
+  優先順序較低的解碼器。候選清單來自選擇器，只有硬體解碼器，所以不會繞到軟體解碼。
 - `DefaultLoadControl`：最少緩衝 15 秒、最多 40 秒，開始播放需 2.5 秒，重新緩衝後需 5 秒。
 - `ProgressiveMediaSource` 搭配 `RoutingDataSource`，刻意不用 `DefaultDataSource`，播放器只能讀 SMB 與 SAF。
 - `SmbDataSource` 一次向 NAS 讀 4 MiB 進緩衝區再分批交給 ExoPlayer，避免每次幾十 KB 的請求被網路延遲拖垮；
@@ -125,6 +126,7 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 - `onPlayerError` 是解碼器相關錯誤（`DECODER_INIT_FAILED`、`DECODER_QUERY_FAILED`、`DECODING_FAILED`、
   `DECODING_FORMAT_EXCEEDS_CAPABILITIES`、`DECODING_FORMAT_UNSUPPORTED`）：降版；最後一個版本也失敗就停止並顯示錯誤。
   其他錯誤（網路、找不到檔案、格式損壞等）不降版，顯示錯誤並把播放鍵變成「重試」。
+- 降版時從原本的播放位置接著播。
 - 每個版本最多降版一次（`failedVariant`）。「重試」從目前版本重新 `prepare()` 並跳回原位置。
 - 播完（`STATE_ENDED`）或出錯時，若選單沒開就自動打開主選單。
 
