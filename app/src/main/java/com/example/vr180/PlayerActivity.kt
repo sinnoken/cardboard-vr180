@@ -277,6 +277,9 @@ class PlayerActivity : ComponentActivity() {
                     if (menu.page === mainPage) closeMenu()
                 } else {
                     val nav = a.toNav() ?: return
+                    val horizontal = a == VrAction.LEFT || a == VrAction.RIGHT
+                    // 進度列按住左右跟選單關著時一樣節流，避免每 90ms 就對 NAS 發一次 seek
+                    if (horizontal && menu.focusedIsSeek() && !seekAllowed(heldMs)) return
                     // 數值項目按住左右會加速：越按越多格，校正時不用一格一格慢慢調
                     val times = if ((a == VrAction.LEFT || a == VrAction.RIGHT) && menu.focusedIsStepper())
                         stepsFor(heldMs) else 1

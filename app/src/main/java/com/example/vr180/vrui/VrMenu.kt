@@ -79,6 +79,12 @@ class VrMenu {
     private var gazeCell: Int? = null
     private var gazeZone = Zone.NONE
     private var gazeSeek = -1f          // 視線在進度列上的位置 0..1，不在進度列上是 -1
+
+    // 面板剛放到視線前方時，面板中心可能剛好落在某一格上（例如主選單的「設定…」）。
+    // 先忽略那一格，等視線移到別格才開始搶焦點，打開選單就按確認仍然是原本焦點的項目。
+    private var gazeArmed = true
+    private var gazeStart: Int? = null
+    private var gazeStartSet = false
     private var dirty = true
 
     /** 播放狀態等外部文字，任一執行緒都可以設定。 */
@@ -131,6 +137,8 @@ class VrMenu {
      * 給定角度（例如 -36°）時放在水平前方偏下，讓正中央的校正圖樣不被擋住。
      */
     fun placeInFront(head: FloatArray, pitchDeg: Float? = null) {
+        gazeArmed = false
+        gazeStartSet = false
         val fw = M3.apply(head, 0f, 0f, -1f)
         // 面板保持直立：右方向取水平面上的向量
         var rx = -fw[2]; var rz = fw[0]
@@ -178,6 +186,11 @@ class VrMenu {
                         }
                     }
                 }
+            }
+            if (!gazeArmed) {
+                if (!gazeStartSet) { gazeStart = hit; gazeStartSet = true }
+                if (hit != gazeStart) gazeArmed = true
+                else { hit = null; zone = Zone.NONE; seek = -1f }
             }
             // 視線移到「另一個」項目時才搶走焦點，避免蓋掉控制器的選擇
             if (hit != gazeCell) {
@@ -237,6 +250,10 @@ class VrMenu {
 
     /** 視線是否正落在某個項目上（Cardboard 按鈕據此決定要「選取」還是「關閉選單」）。 */
     fun isGazingAtItem() = visible && gazeCell != null
+
+    /** 目前焦點是否在進度列上（按住左右時要節流）。 */
+    fun focusedIsSeek(): Boolean =
+        visible && cells.isNotEmpty() && cells[focus.coerceIn(cells.indices)].item is MenuItem.Seek
 
     /** 目前焦點是否在數值項目上（按住左右時才加速）。 */
     fun focusedIsStepper(): Boolean =
