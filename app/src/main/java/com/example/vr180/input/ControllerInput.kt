@@ -2,6 +2,7 @@ package com.example.vr180.input
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -26,13 +27,20 @@ enum class VrAction {
  *   播放暫停鍵 / 空白鍵 / R2         → 播放 / 暫停
  *   音量鍵                          → 交給系統
  */
-class ControllerInput(private val onAction: (VrAction) -> Unit) {
+class ControllerInput(
+    /** heldMs = 0 表示剛按下；連發時是已經按住的毫秒數，讓呼叫端決定要加速或節流。 */
+    private val onAction: (action: VrAction, heldMs: Long) -> Unit,
+) {
 
     private val handler = Handler(Looper.getMainLooper())
     private var repeating: VrAction? = null
+    private var pressedAt = 0L
     private val repeatRunnable = object : Runnable {
         override fun run() {
-            repeating?.let { onAction(it); handler.postDelayed(this, REPEAT_MS) }
+            repeating?.let {
+                onAction(it, SystemClock.uptimeMillis() - pressedAt)
+                handler.postDelayed(this, REPEAT_MS)
+            }
         }
     }
 
@@ -43,7 +51,7 @@ class ControllerInput(private val onAction: (VrAction) -> Unit) {
     fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val a = map(keyCode) ?: return false
         if (event.repeatCount > 0) return true          // 自己處理連發，忽略系統的
-        onAction(a)
+        onAction(a, 0L)
         if (a in REPEATABLE) startRepeat(a)
         return true
     }
@@ -88,12 +96,13 @@ class ControllerInput(private val onAction: (VrAction) -> Unit) {
         else -> 0
     }
 
-    private fun press(a: VrAction) { onAction(a); startRepeat(a) }
+    private fun press(a: VrAction) { onAction(a, 0L); startRepeat(a) }
     private fun release(vararg a: VrAction) { repeating?.let { if (it in a) stopRepeat() } }
 
     private fun startRepeat(a: VrAction) {
         stopRepeat()
         repeating = a
+        pressedAt = SystemClock.uptimeMillis()
         handler.postDelayed(repeatRunnable, REPEAT_DELAY_MS)
     }
 
@@ -106,6 +115,14 @@ class ControllerInput(private val onAction: (VrAction) -> Unit) {
         private const val REPEAT_DELAY_MS = 400L
         private const val REPEAT_MS = 90L
         private val REPEATABLE = setOf(VrAction.UP, VrAction.DOWN, VrAction.LEFT, VrAction.RIGHT)
+
+        /** 按鍵測試頁用的中文名稱。 */
+        fun label(a: VrAction): String = when (a) {
+            VrAction.UP -> "上"; VrAction.DOWN -> "下"; VrAction.LEFT -> "左"; VrAction.RIGHT -> "右"
+            VrAction.SELECT -> "選取"; VrAction.BACK -> "返回"; VrAction.MENU -> "開關選單"
+            VrAction.RECENTER -> "重新置中"; VrAction.PLAY_PAUSE -> "播放/暫停"
+            VrAction.SEEK_BACK -> "倒退 10 秒"; VrAction.SEEK_FWD -> "快轉 10 秒"
+        }
 
         fun map(keyCode: Int): VrAction? = when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> VrAction.UP

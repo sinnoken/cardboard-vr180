@@ -61,6 +61,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SIDECAR = "sidecar"     // 場景校正檔位置（SidecarRef.encode()）
         const val EXTRA_TITLE = "title"
         private const val CALIB_PANEL_PITCH = -36f
+        private const val SEEK_HOLD_INTERVAL_MS = 600L
     }
 
     private lateinit var store: ProfileStore
@@ -138,7 +139,7 @@ class PlayerActivity : ComponentActivity() {
         })
         glView.setOnTouchListener { _, ev -> gestures.onTouchEvent(ev); true }
 
-        input = ControllerInput { dispatch(it) }
+        input = ControllerInput { a, held -> dispatch(a, heldMs = held) }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = dispatch(VrAction.BACK)
         })
@@ -185,17 +186,17 @@ class PlayerActivity : ComponentActivity() {
     override fun onGenericMotionEvent(event: MotionEvent): Boolean =
         input.onGenericMotion(event) || super.onGenericMotionEvent(event)
 
-    private fun dispatch(a: VrAction, fromTap: Boolean = false) {
+    private fun dispatch(a: VrAction, fromTap: Boolean = false, heldMs: Long = 0L) {
         when (a) {
             VrAction.PLAY_PAUSE -> togglePlay()
             VrAction.SEEK_BACK -> seekBy(-10_000)
             VrAction.SEEK_FWD -> seekBy(10_000)
-            else -> glView.queueEvent { handleOnGl(a, fromTap) }
+            else -> glView.queueEvent { handleOnGl(a, fromTap, heldMs) }
         }
     }
 
     /** GL 執行緒。 */
-    private fun handleOnGl(a: VrAction, fromTap: Boolean) {
+    private fun handleOnGl(a: VrAction, fromTap: Boolean, heldMs: Long) {
         when (a) {
             VrAction.RECENTER -> { tracker.recenter(); replaceMenu = menu.visible }
             VrAction.MENU -> if (menu.visible) closeMenu() else menu.show(mainPage, lastHead)
@@ -203,18 +204,43 @@ class PlayerActivity : ComponentActivity() {
                 if (!menu.visible) {
                     when (a) {
                         VrAction.SELECT, VrAction.BACK -> menu.show(mainPage, lastHead)
-                        VrAction.LEFT -> runOnUiThread { seekBy(-10_000) }
-                        VrAction.RIGHT -> runOnUiThread { seekBy(10_000) }
+                        // 按住左右：不要每 90ms 跳一次，最多每 0.6 秒跳 10 秒
+                        VrAction.LEFT, VrAction.RIGHT -> if (seekAllowed(heldMs)) {
+                            val ms = if (a == VrAction.LEFT) -10_000L else 10_000L
+                            runOnUiThread { seekBy(ms) }
+                        }
                         else -> {}
                     }
                 } else if (fromTap && !menu.isGazingAtItem()) {
                     // 看向別處按 Cardboard 按鈕：主選單時關閉選單；校正頁則忽略，避免誤觸「歸零」等按鈕
                     if (menu.page === mainPage) closeMenu()
                 } else {
-                    menu.handle(a.toNav() ?: return)
+                    val nav = a.toNav() ?: return
+                    // 數值項目按住左右會加速：越按越多格，校正時不用一格一格慢慢調
+                    val times = if ((a == VrAction.LEFT || a == VrAction.RIGHT) && menu.focusedIsStepper())
+                        stepsFor(heldMs) else 1
+                    repeat(times) { menu.handle(nav) }
                 }
             }
         }
+    }
+
+    private var lastHeldSeekMs = 0L
+
+    /** 剛按下一定跳；按住時至少間隔 SEEK_HOLD_INTERVAL_MS 才再跳一次。 */
+    private fun seekAllowed(heldMs: Long): Boolean {
+        if (heldMs == 0L) { lastHeldSeekMs = 0L; return true }
+        if (heldMs - lastHeldSeekMs < SEEK_HOLD_INTERVAL_MS) return false
+        lastHeldSeekMs = heldMs
+        return true
+    }
+
+    /** 按住時間 → 每次連發要走幾格。 */
+    private fun stepsFor(heldMs: Long): Int = when {
+        heldMs < 1_000 -> 1
+        heldMs < 2_000 -> 3
+        heldMs < 3_000 -> 6
+        else -> 12
     }
 
     private fun VrAction.toNav(): NavAction? = when (this) {

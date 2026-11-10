@@ -174,6 +174,10 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
                 lens = store.loadLenses().active
             },
         ) { navigate(Screen.LENSES) }
+        SetupCard(
+            "4. 控制器按鍵測試（選用）",
+            "藍芽控制器按了沒反應時，用這頁看它送出什麼訊號。",
+        ) { navigate(Screen.KEY_TEST) }
     }
 }
 

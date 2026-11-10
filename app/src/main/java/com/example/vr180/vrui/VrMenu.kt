@@ -201,6 +201,10 @@ class VrMenu {
     /** 視線是否正落在某個項目上（Cardboard 按鈕據此決定要「選取」還是「關閉選單」）。 */
     fun isGazingAtItem() = visible && gazeCell != null
 
+    /** 目前焦點是否在數值項目上（按住左右時才加速）。 */
+    fun focusedIsStepper(): Boolean =
+        visible && cells.isNotEmpty() && cells[focus.coerceIn(cells.indices)].item is MenuItem.Stepper
+
     // ---------------- 版面與繪製 ----------------
 
     private val pad = 36f

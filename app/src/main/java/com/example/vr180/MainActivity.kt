@@ -28,6 +28,10 @@ import com.example.vr180.source.FileSource
 import com.example.vr180.ui.BrowserScreen
 import com.example.vr180.ui.GyroTestScreen
 import com.example.vr180.ui.HomeScreen
+import com.example.vr180.ui.KeyTestScreen
+import com.example.vr180.input.InputLog
+import android.view.KeyEvent
+import android.view.MotionEvent
 import com.example.vr180.ui.LensProfilesScreen
 import com.example.vr180.ui.ScreenCalibScreen
 
@@ -37,6 +41,7 @@ enum class Screen(val title: String) {
     SCREEN_CALIB("螢幕尺寸校正"),
     GYRO("陀螺儀檢測"),
     LENSES("眼鏡設定檔"),
+    KEY_TEST("控制器按鍵測試"),
 }
 
 class MainActivity : ComponentActivity() {
@@ -49,6 +54,19 @@ class MainActivity : ComponentActivity() {
                 App(store)
             }
         }
+    }
+
+    // 按鍵測試頁開啟時：記錄所有控制器訊號並攔下來（系統返回鍵除外，否則手勢返回會失效）
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!InputLog.active) return super.dispatchKeyEvent(event)
+        InputLog.onKey(event)
+        return if (event.keyCode == KeyEvent.KEYCODE_BACK) super.dispatchKeyEvent(event) else true
+    }
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        if (!InputLog.active) return super.dispatchGenericMotionEvent(ev)
+        InputLog.onMotion(ev)
+        return true
     }
 }
 
@@ -80,6 +98,7 @@ private fun App(store: ProfileStore) {
                 Screen.SCREEN_CALIB -> ScreenCalibScreen(store)
                 Screen.GYRO -> GyroTestScreen(store)
                 Screen.LENSES -> LensProfilesScreen(store) { screen = Screen.HOME }
+                Screen.KEY_TEST -> KeyTestScreen()
             }
         }
     }
