@@ -8,11 +8,12 @@ import org.junit.Test
 class PlayerMathTest {
     @Test fun seekStepGrowsWhileHeld() {
         assertEquals(10_000L, seekStepMs(0))
-        assertEquals(10_000L, seekStepMs(1_999))
-        assertEquals(30_000L, seekStepMs(2_000))
-        assertEquals(60_000L, seekStepMs(4_000))
-        assertEquals(120_000L, seekStepMs(6_000))
-        assertEquals(120_000L, seekStepMs(60_000))
+        assertEquals(10_000L, seekStepMs(999))
+        assertEquals(30_000L, seekStepMs(1_000))
+        assertEquals(60_000L, seekStepMs(2_000))
+        assertEquals(120_000L, seekStepMs(3_000))
+        assertEquals(300_000L, seekStepMs(4_000))
+        assertEquals(300_000L, seekStepMs(60_000))
     }
 
     @Test fun stepperAccelerates() {

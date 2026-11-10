@@ -5,12 +5,13 @@ import com.example.vr180.model.VerticalAlignment
 
 // 播放器用到的純計算，放在 Activity 外面才能寫 JVM 單元測試。
 
-/** 按住倒退／快轉的時間 → 每次跳多遠：10 秒、30 秒、1 分、2 分。 */
+/** 按住倒退／快轉的時間 → 每次跳多遠：每秒升一級，10 秒、30 秒、1 分、2 分、5 分。 */
 fun seekStepMs(heldMs: Long): Long = when {
-    heldMs < 2_000 -> 10_000L
-    heldMs < 4_000 -> 30_000L
-    heldMs < 6_000 -> 60_000L
-    else -> 120_000L
+    heldMs < 1_000 -> 10_000L
+    heldMs < 2_000 -> 30_000L
+    heldMs < 3_000 -> 60_000L
+    heldMs < 4_000 -> 120_000L
+    else -> 300_000L
 }
 
 /** 按住數值項目左右的時間 → 每次連發要走幾格。 */

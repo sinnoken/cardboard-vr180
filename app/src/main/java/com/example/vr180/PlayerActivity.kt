@@ -75,7 +75,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_PLAYLIST_INDEX = "playlistIndex"    // 在 Playlist.items 裡的位置，-1 = 沒有清單
         private const val CALIB_PANEL_PITCH = -36f
-        private const val SEEK_HOLD_INTERVAL_MS = 600L
+        private const val SEEK_HOLD_INTERVAL_MS = 400L
     }
 
     private lateinit var store: ProfileStore
@@ -287,7 +287,7 @@ class PlayerActivity : ComponentActivity() {
                         // 鏡片校正面板收起時畫面是測試圖樣，左右改成切換圖樣（單手配置沒有倒退／快轉鍵）
                         VrAction.LEFT, VrAction.RIGHT -> if (menu.concealed && menu.page === lensPage) {
                             if (heldMs == 0L) cyclePattern(if (a == VrAction.LEFT) -1 else 1)
-                        // 按住左右：最多每 0.6 秒跳一次，按越久跳越遠
+                        // 按住左右：最多每 0.4 秒跳一次，按越久跳越遠
                         } else if (seekAllowed(heldMs)) {
                             val ms = seekStepMs(heldMs) * if (a == VrAction.LEFT) -1 else 1
                             runOnUiThread { seekBy(ms) }
