@@ -110,17 +110,19 @@ class ProfileStore(context: Context) {
         readFile(File(sceneDir, hash(key) + ".json"))?.let(SceneCalib::fromJson)
 
     @Synchronized fun saveScene(key: String, s: SceneCalib) =
-        File(sceneDir, hash(key) + ".json").writeText(s.toJson().toString(2))
+        writeFile(File(sceneDir, hash(key) + ".json"), s.toJson())
 
     private fun read(name: String) = readFile(File(dir, name))
     private fun readFile(f: File): JSONObject? =
         if (f.exists()) runCatching { JSONObject(f.readText()) }.getOrNull() else null
 
-    private fun write(name: String, o: JSONObject) {
+    private fun write(name: String, o: JSONObject) = writeFile(File(dir, name), o)
+
+    private fun writeFile(f: File, o: JSONObject) {
         // 先寫暫存檔再改名，避免寫到一半斷電把設定弄壞
-        val tmp = File(dir, "$name.tmp")
+        val tmp = File(f.parentFile, f.name + ".tmp")
         tmp.writeText(o.toString(2))
-        tmp.renameTo(File(dir, name))
+        tmp.renameTo(f)
     }
 
     private fun hash(s: String): String =
