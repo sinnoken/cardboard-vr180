@@ -43,34 +43,16 @@ class ControllerInput(
     private var axisDirX = 0
     private var axisDirY = 0
 
-    // 沒被認出的單手控制器用標準配置時，扳機一樣會送出 A＋R2（先後不一定）。
-    // A 與 R2 都先等 CHORD_MS：期間收到另一個就合成 TRIGGER，否則照標準配置。
-    private var pendingKey = 0
-    private val pendingRunnable = Runnable {
-        ControllerProfile.STANDARD.map(pendingKey)?.let { onAction(it, 0L) }
-        pendingKey = 0
-    }
-
-    // 單手配置下 A、R2 都是 TRIGGER：同一次扳機會送兩個，只算一次
-    private var lastTriggerAt = -CHORD_MS
+    // 單手控制器的扳機會同時送出 A＋R2（分不開），單手配置下兩個都是 TRIGGER：同一次扳機只算一次。
+    // 標準配置的 A 與 R2 是兩顆獨立的鍵，按下就送出，不等待。
+    private var lastTriggerAt = -TRIGGER_DEDUP_MS
 
     fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val profile = choice().resolve(event.device?.name)
         val a = profile.map(keyCode) ?: return false
         if (event.repeatCount > 0) return true          // 自己處理連發，忽略系統的
-        if (profile == ControllerProfile.STANDARD && keyCode in CHORD_KEYS) {
-            handler.removeCallbacks(pendingRunnable)
-            if (pendingKey != 0 && pendingKey != keyCode) {
-                pendingKey = 0
-                onAction(VrAction.TRIGGER, 0L)
-            } else {
-                pendingKey = keyCode
-                handler.postDelayed(pendingRunnable, CHORD_MS)
-            }
-            return true
-        }
-        if (a == VrAction.TRIGGER && keyCode in CHORD_KEYS) {
-            if (event.eventTime - lastTriggerAt < CHORD_MS) return true
+        if (a == VrAction.TRIGGER && keyCode in TRIGGER_KEYS) {
+            if (event.eventTime - lastTriggerAt < TRIGGER_DEDUP_MS) return true
             lastTriggerAt = event.eventTime
         }
         onAction(a, 0L)
@@ -112,8 +94,6 @@ class ControllerInput(
 
     fun cancel() {
         stopRepeat()
-        handler.removeCallbacks(pendingRunnable)
-        pendingKey = 0
     }
 
     private fun dir(v: Float) = when {
@@ -140,8 +120,9 @@ class ControllerInput(
     companion object {
         private const val REPEAT_DELAY_MS = 400L
         private const val REPEAT_MS = 90L
-        const val CHORD_MS = 80L
-        val CHORD_KEYS = setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_R2)
+        /** 單手控制器同一次扳機送出 A 與 R2 的時間差上限。 */
+        const val TRIGGER_DEDUP_MS = 80L
+        val TRIGGER_KEYS = setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_R2)
         private val REPEATABLE = setOf(VrAction.UP, VrAction.DOWN, VrAction.LEFT, VrAction.RIGHT)
 
         /** 按鍵測試頁用的中文名稱。 */

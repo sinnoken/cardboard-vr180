@@ -38,7 +38,7 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 | `render/Shaders.kt` | 單次繪製的頂點與片段著色器 |
 | `render/M3.kt` | 3×3 旋轉矩陣工具（列優先） |
 | `vrui/VrMenu.kt` | 世界固定的 VR 選單面板：版面、視線判定、焦點、畫到 Bitmap |
-| `input/ControllerInput.kt` | 按鍵與搖桿事件 → `VrAction`，處理連發與 A＋R2 合併 |
+| `input/ControllerInput.kt` | 按鍵與搖桿事件 → `VrAction`，處理連發與單手扳機的去重 |
 | `input/ControllerProfile.kt` | 按鍵配置（標準／單手）與 `ControllerChoice`（自動判斷） |
 | `input/InputLog.kt` | 按鍵測試頁的事件紀錄 |
 | `ui/` | Compose 畫面：首頁、瀏覽、螢幕尺寸校正、陀螺儀檢測、眼鏡設定檔、按鍵測試；`Errors.kt` 把例外轉成中文訊息 |
@@ -230,9 +230,8 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 ### ControllerInput
 
 - 連發：只有上下左右會連發，按下 400 ms 後每 90 ms 送一次，並附上已按住的毫秒數；忽略系統的按鍵重複事件。
-- 標準配置的 A 與 R2：先等 80 ms，期間收到另一個就合成一次 `TRIGGER`，否則照標準配置送出。
-  這是為了沒被認出的單手控制器（扳機同時送 A＋R2）。
-- 單手配置的 A、R1、R2 都是 `TRIGGER`；A 與 R2 在 80 ms 內只算一次。
+- 標準配置的 A 與 R2 是兩顆獨立的鍵，按下就送出，不等待。
+- 單手配置的 A、R1、R2 都是 `TRIGGER`；單手控制器的扳機同時送出 A＋R2（分不開），80 ms 內只算一次，不等待。
 
 ### 動作分派（PlayerActivity）
 
@@ -272,4 +271,4 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 ### 按鍵測試頁
 
 `InputLog.active` 為 `true` 時，`MainActivity.dispatchKeyEvent`／`dispatchGenericMotionEvent` 記錄並攔下所有事件
-（系統返回鍵除外），依測試頁選的配置顯示 App 會把它當成什麼動作；A 與 R2 在 80 ms 內先後送出時標成合併的扳機。
+（系統返回鍵除外），依測試頁選的配置顯示 App 會把它當成什麼動作；單手配置下同一次扳機的第二個鍵標成「只算一次」。

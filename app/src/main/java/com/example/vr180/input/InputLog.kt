@@ -25,11 +25,9 @@ object InputLog {
 
     private val lastBucket = HashMap<Int, Int>()
     private var lastMouseMs = 0L
-    private var chordKey = 0
-    private var chordAt = 0L
-    private var chordLine: String? = null
+    private var lastTriggerAt = -ControllerInput.TRIGGER_DEDUP_MS
 
-    fun clear() { lines.clear(); lastBucket.clear(); chordLine = null }
+    fun clear() { lines.clear(); lastBucket.clear() }
 
     private fun add(s: String) {
         lines.add(0, s)
@@ -40,22 +38,18 @@ object InputLog {
         if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount > 0) return
         e.device?.name?.let { lastDevice = it }
         val name = KeyEvent.keyCodeToString(e.keyCode).removePrefix("KEYCODE_")
-        val mapped = choice.resolve(e.device?.name).map(e.keyCode)?.let { "→ " + ControllerInput.label(it) }
+        val action = choice.resolve(e.device?.name).map(e.keyCode)
+        val mapped = action?.let { "→ " + ControllerInput.label(it) }
             ?: if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
                 "→ 交給系統調音量" else "→ App 不認得"
         val line = "按鍵 $name（${e.keyCode}）$mapped · ${e.device?.name ?: "?"}"
-        // 與 ControllerInput 相同的規則：A 與 R2 在 CHORD_MS 內先後送出，合成一次扳機
-        val t = e.eventTime
-        if (e.keyCode in ControllerInput.CHORD_KEYS) {
-            val prev = chordLine
-            if (prev != null && chordKey != e.keyCode && t - chordAt < ControllerInput.CHORD_MS) {
-                lines.indexOf(prev).takeIf { it >= 0 }?.let { lines[it] = "$prev（合併）" }
-                add("$line（合併）")
-                add("扳機（A＋R2 同時送出）→ ${ControllerInput.label(VrAction.TRIGGER)} · ${e.device?.name ?: "?"}")
-                chordLine = null
+        // 與 ControllerInput 相同的規則：單手配置下，同一次扳機送出的 A＋R2 只算一次
+        if (action == VrAction.TRIGGER && e.keyCode in ControllerInput.TRIGGER_KEYS) {
+            if (e.eventTime - lastTriggerAt < ControllerInput.TRIGGER_DEDUP_MS) {
+                add("$line（同一次扳機，只算一次）")
                 return
             }
-            chordKey = e.keyCode; chordAt = t; chordLine = line
+            lastTriggerAt = e.eventTime
         }
         add(line)
     }
