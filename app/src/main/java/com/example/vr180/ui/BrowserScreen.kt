@@ -50,7 +50,8 @@ private val VIDEO_EXT = setOf("mp4", "mkv", "mov", "m4v", "ts", "webm")
 
 /** 檔名結尾的解析度標記，例如 trip_8K.mp4、trip_5.7K.mp4 會被歸成同一支影片的兩個版本。 */
 private val TAG = Regex("""^(.*?)[_\-. ](8k|6k|5\.7k|4k)$""", RegexOption.IGNORE_CASE)
-private val RANK = mapOf("8k" to 4, "6k" to 3, "5.7k" to 2, "4k" to 1)
+// 沒有標記的「原檔」多半是母片、畫質最高，排第一；解不了會自動降版
+private val RANK = mapOf("原檔" to 5, "8k" to 4, "6k" to 3, "5.7k" to 2, "4k" to 1)
 
 /** 「包含子資料夾」往下最多幾層：NAS 每層都要一次網路請求，太深會很慢。 */
 private const val MAX_DEPTH = 3
