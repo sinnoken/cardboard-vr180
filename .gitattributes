@@ -1,0 +1,3 @@
+# 文字檔一律以 LF 存放與 checkout：不受各台電腦 core.autocrlf 設定影響，工作目錄與 repo 一致。
+# 二進位檔由 git 自動判斷，不轉換。
+* text=auto eol=lf
