@@ -241,7 +241,7 @@ class PlayerActivity : ComponentActivity() {
     private fun watchControllers() {
         val im = getSystemService(INPUT_SERVICE) as InputManager
         fun refresh() {
-            val names = im.inputDeviceIds.mapNotNull { im.getInputDevice(it) }
+            val names = im.inputDeviceIds.asList().mapNotNull { im.getInputDevice(it) }
                 .filter { d ->
                     d.isExternal && (d.supportsSource(InputDevice.SOURCE_GAMEPAD) ||
                         d.supportsSource(InputDevice.SOURCE_JOYSTICK) ||
