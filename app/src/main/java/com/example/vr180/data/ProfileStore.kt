@@ -31,6 +31,28 @@ class ProfileStore(context: Context) {
     @Synchronized fun saveControllerChoice(c: ControllerChoice) =
         write("controller.json", JSONObject().put("choice", c.name))
 
+    enum class BrowseSort { NAME, DATE, SIZE }
+
+    /** 影片清單的顯示方式，NAS 與本機資料夾共用。 */
+    data class BrowseOptions(
+        val sort: BrowseSort = BrowseSort.NAME,
+        val includeSubfolders: Boolean = false,
+        val hideSmall: Boolean = true,
+    )
+
+    @Synchronized fun loadBrowseOptions(): BrowseOptions {
+        val o = read("browse.json") ?: return BrowseOptions()
+        val d = BrowseOptions()
+        return BrowseOptions(
+            sort = BrowseSort.entries.firstOrNull { it.name == o.optString("sort") } ?: d.sort,
+            includeSubfolders = o.optBoolean("includeSubfolders", d.includeSubfolders),
+            hideSmall = o.optBoolean("hideSmall", d.hideSmall),
+        )
+    }
+
+    @Synchronized fun saveBrowseOptions(b: BrowseOptions) = write("browse.json", JSONObject()
+        .put("sort", b.sort.name).put("includeSubfolders", b.includeSubfolders).put("hideSmall", b.hideSmall))
+
     @Synchronized fun loadConnection(): SmbConnection =
         read("connection.json")?.let(SmbConnection::fromJson) ?: SmbConnection()
 

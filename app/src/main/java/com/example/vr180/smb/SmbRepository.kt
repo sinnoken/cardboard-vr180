@@ -17,7 +17,7 @@ import com.hierynomus.smbj.share.File as SmbFile
 import java.util.EnumSet
 import java.util.concurrent.TimeUnit
 
-data class SmbEntry(val name: String, val isDir: Boolean, val size: Long)
+data class SmbEntry(val name: String, val isDir: Boolean, val size: Long, val modifiedMs: Long)
 
 /**
  * 管理單一 NAS 的 SMB 連線（SMB2/3，透過 smbj）。所有方法都會做網路 I/O，請在背景執行緒呼叫。
@@ -74,6 +74,7 @@ object SmbRepository {
                     it.fileName,
                     (it.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value) != 0L,
                     it.endOfFile,
+                    it.lastWriteTime.toEpochMillis(),
                 )
             }
             .sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))

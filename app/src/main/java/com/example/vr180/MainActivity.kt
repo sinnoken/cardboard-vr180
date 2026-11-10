@@ -94,7 +94,7 @@ private fun App(store: ProfileStore) {
                     navigate = { screen = it },
                     openSource = { source = it; screen = Screen.BROWSER },
                 )
-                Screen.BROWSER -> source?.let { BrowserScreen(it) }
+                Screen.BROWSER -> source?.let { BrowserScreen(it, store) }
                 Screen.SCREEN_CALIB -> ScreenCalibScreen(store)
                 Screen.GYRO -> GyroTestScreen(store)
                 Screen.LENSES -> LensProfilesScreen(store) { screen = Screen.HOME }

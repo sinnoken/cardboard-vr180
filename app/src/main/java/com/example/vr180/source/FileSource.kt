@@ -9,7 +9,14 @@ import com.example.vr180.smb.SmbRepository
 import java.io.IOException
 
 /** 瀏覽清單中的一個項目。id 對 SMB 是相對路徑，對本機資料夾是 SAF 的 documentId。 */
-data class FsEntry(val name: String, val isDir: Boolean, val id: String)
+/** size 為 -1、modifiedMs 為 0 代表來源沒有提供。 */
+data class FsEntry(
+    val name: String,
+    val isDir: Boolean,
+    val id: String,
+    val size: Long = -1,
+    val modifiedMs: Long = 0,
+)
 
 /**
  * 影片來源：NAS（SMB）或本機資料夾（Storage Access Framework）。
@@ -32,7 +39,7 @@ class SmbFileSource(private val conn: SmbConnection) : FileSource {
 
     override fun list(dirId: String): List<FsEntry> {
         SmbRepository.configure(conn)
-        return SmbRepository.list(conn.host, conn.share, dirId).map { FsEntry(it.name, it.isDir, join(dirId, it.name)) }
+        return SmbRepository.list(conn.host, conn.share, dirId).map { FsEntry(it.name, it.isDir, join(dirId, it.name), it.size, it.modifiedMs) }
     }
 
     override fun playUri(entry: FsEntry) =
@@ -59,13 +66,18 @@ class LocalFileSource(
     override fun list(dirId: String): List<FsEntry> {
         val out = ArrayList<FsEntry>()
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId)
-        val cols = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE)
+        val cols = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE,
+            Document.COLUMN_SIZE, Document.COLUMN_LAST_MODIFIED)
         resolver.query(children, cols, null, null, null)?.use { c ->
             while (c.moveToNext()) {
                 val id = c.getString(0) ?: continue
                 val name = c.getString(1) ?: continue
                 if (name.startsWith(".")) continue
-                out += FsEntry(name, c.getString(2) == Document.MIME_TYPE_DIR, id)
+                out += FsEntry(
+                    name, c.getString(2) == Document.MIME_TYPE_DIR, id,
+                    size = if (c.isNull(3)) -1 else c.getLong(3),
+                    modifiedMs = if (c.isNull(4)) 0 else c.getLong(4),
+                )
             }
         } ?: throw IOException("無法讀取資料夾，可能已失去存取權限，請移除後重新加入")
         return out.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
