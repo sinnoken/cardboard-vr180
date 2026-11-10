@@ -39,6 +39,7 @@ import com.example.vr180.player.HardwareOnly
 import com.example.vr180.render.M3
 import com.example.vr180.render.VrRenderer
 import com.example.vr180.smb.LocalNetworkPermission
+import com.example.vr180.smb.SmbRepository
 import com.example.vr180.player.RoutingDataSource
 import com.example.vr180.source.SidecarIo
 import com.example.vr180.source.SidecarRef
@@ -177,6 +178,8 @@ class PlayerActivity : ComponentActivity() {
         if (!tracker.available) {
             message = "這支手機找不到頭部追蹤感測器，畫面不會跟著轉頭"
         }
+        // 程序被系統回收後直接回到播放器時，SmbRepository 是空的；不設定就會被當成「連不到 NAS」
+        if (uris.any { it.startsWith("smb:") }) SmbRepository.configure(store.loadConnection())
         if (uris.any { it.startsWith("smb:") } && !LocalNetworkPermission.granted(this)) {
             message = "缺少區域網路權限，無法讀取 NAS。請回主畫面重新連線以授權。"
         }
