@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- VR 播放端（PlayerActivity）的介面文字：繁體中文 -->
+<!-- VR 播放端（PlayerActivity）的介面文字：繁體中文。資料夾用 b+zh+Hant 而非 zh：Android 7 起 zh 會被推定為簡體（Hans），繁體系統對不到 -->
 <resources>
     <string name="player_app_title">VR180 播放器</string>
     <string name="player_back">返回</string>

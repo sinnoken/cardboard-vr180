@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 手機端介面文字（預設語言：英文）。key 必須與 values-zh/strings_ui.xml 完全一致；用詞依 UI glossary。 -->
+<!-- 手機端介面文字（預設語言：英文）。key 必須與 values-b+zh+Hant/strings_ui.xml 完全一致；用詞依 UI glossary。 -->
 <resources>
     <string name="app_name">VR180 Player</string>
     <string name="ui_screen_browser">Videos</string>

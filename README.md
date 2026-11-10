@@ -75,7 +75,7 @@ All setup steps are optional. You can pick a video and play it right away. On pl
 
 ## Controls
 
-The app UI follows the phone's system language: Traditional Chinese when the system language is Chinese, English otherwise.
+The app UI follows the phone's system language: Traditional Chinese when the system language is Traditional Chinese (Taiwan, Hong Kong, Macau), English otherwise (including Simplified Chinese).
 
 The menu is a panel fixed in space. On calibration pages the panel sits below your line of sight, so it does not cover the test pattern in the center.
 
