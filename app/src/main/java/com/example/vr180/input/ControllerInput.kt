@@ -13,6 +13,7 @@ enum class VrAction {
     UP, DOWN, LEFT, RIGHT, SELECT, BACK, MENU, RECENTER, PLAY_PAUSE, SEEK_BACK, SEEK_FWD,
     /** 選單開著＝選取，關著＝播放／暫停（單手控制器的扳機與 R1）。 */
     TRIGGER,
+    VOL_UP, VOL_DOWN,
 }
 
 /**
@@ -150,6 +151,7 @@ class ControllerInput(
             VrAction.RECENTER -> "重新置中"; VrAction.PLAY_PAUSE -> "播放/暫停"
             VrAction.SEEK_BACK -> "倒退 10 秒"; VrAction.SEEK_FWD -> "快轉 10 秒"
             VrAction.TRIGGER -> "選單開著＝選取，關著＝播放/暫停"
+            VrAction.VOL_UP -> "音量＋"; VrAction.VOL_DOWN -> "音量－"
         }
     }
 }

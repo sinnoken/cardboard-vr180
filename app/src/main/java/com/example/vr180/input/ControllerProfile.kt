@@ -12,7 +12,8 @@ enum class ControllerProfile(val label: String) {
 
     /**
      * 單手控制器（例如 MOCUTE-052）：第一列 B、SELECT，下方菱形 12 點 X、3 點 Y、6 點 R1、9 點 START，
-     * 背面扳機同時送出 A＋R2。依實體位置排：左右一對是倒退／快轉，下方與扳機是確認，上方開關選單。
+     * 背面扳機同時送出 A＋R2。依實體位置排：左右一對是音量－／＋，下方與扳機是確認，上方開關選單。
+     * 倒退／快轉與上一支／下一支交給搖桿（選單關著時）。
      */
     ONE_HAND("單手控制器");
 
@@ -20,8 +21,8 @@ enum class ControllerProfile(val label: String) {
         STANDARD -> standard(keyCode)
         ONE_HAND -> when (keyCode) {
             KeyEvent.KEYCODE_BUTTON_X -> VrAction.MENU
-            KeyEvent.KEYCODE_BUTTON_Y -> VrAction.SEEK_FWD
-            KeyEvent.KEYCODE_BUTTON_START -> VrAction.SEEK_BACK
+            KeyEvent.KEYCODE_BUTTON_Y -> VrAction.VOL_UP
+            KeyEvent.KEYCODE_BUTTON_START -> VrAction.VOL_DOWN
             KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_R2 -> VrAction.TRIGGER
             else -> standard(keyCode)
         }
@@ -30,7 +31,7 @@ enum class ControllerProfile(val label: String) {
     /** 按鍵測試頁顯示的對應表：(實體按鍵, 動作)。 */
     fun legend(): List<Pair<String, String>> = when (this) {
         STANDARD -> listOf(
-            "十字鍵／左搖桿" to "上下左右；選單關著時左右＝倒退／快轉 10 秒",
+            "十字鍵／左搖桿" to "選單開著＝移動焦點；關著時左右＝倒退／快轉（按住越跳越快）、上下＝上一支／下一支",
             "A" to "選取",
             "B" to "返回",
             "Start／Y" to "開關選單",
@@ -39,10 +40,10 @@ enum class ControllerProfile(val label: String) {
             "R2" to "播放／暫停",
         )
         ONE_HAND -> listOf(
-            "搖桿" to "上下左右；選單關著時左右＝倒退／快轉 10 秒",
+            "搖桿" to "選單開著＝移動焦點；關著時左右＝倒退／快轉（按住越跳越快）、上下＝上一支／下一支",
             "扳機、R1（菱形 6 點）" to "選單開著＝選取，關著＝播放／暫停",
             "X（菱形 12 點）" to "開關選單",
-            "START（9 點）／Y（3 點）" to "倒退／快轉 10 秒",
+            "START（9 點）／Y（3 點）" to "音量－／音量＋",
             "B" to "返回",
             "SELECT" to "重新置中",
         )

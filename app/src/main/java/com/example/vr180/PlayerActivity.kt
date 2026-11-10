@@ -1,6 +1,7 @@
 package com.example.vr180
 
 import android.hardware.input.InputManager
+import android.media.AudioManager
 import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
@@ -36,6 +37,7 @@ import com.example.vr180.model.LensProfile
 import com.example.vr180.model.SceneCalib
 import com.example.vr180.model.VerticalAlignment
 import com.example.vr180.player.HardwareOnly
+import com.example.vr180.player.Playlist
 import com.example.vr180.render.M3
 import com.example.vr180.render.VrRenderer
 import com.example.vr180.smb.LocalNetworkPermission
@@ -66,6 +68,7 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_LABELS = "labels"
         const val EXTRA_SIDECAR = "sidecar"     // 場景校正檔位置（SidecarRef.encode()）
         const val EXTRA_TITLE = "title"
+        const val EXTRA_PLAYLIST_INDEX = "playlistIndex"    // 在 Playlist.items 裡的位置，-1 = 沒有清單
         private const val CALIB_PANEL_PITCH = -36f
         private const val SEEK_HOLD_INTERVAL_MS = 600L
     }
@@ -78,6 +81,7 @@ class PlayerActivity : ComponentActivity() {
     private var controllerChoice = ControllerChoice.AUTO
     private val menu = VrMenu()
     private val io = Executors.newSingleThreadExecutor()
+    private var playlistIndex = -1
 
     private var player: ExoPlayer? = null
     private lateinit var trackSelector: DefaultTrackSelector
@@ -87,7 +91,7 @@ class PlayerActivity : ComponentActivity() {
     private var labels = listOf<String>()
     private var sidecar: SidecarRef? = null
     private lateinit var sidecarIo: SidecarIo
-    private var videoTitle = ""
+    @Volatile private var videoTitle = ""     // 主執行緒寫（切換影片），GL 執行緒畫標題時讀
     private var variantIndex = 0
     private var failedVariant = -1
 
@@ -136,6 +140,9 @@ class PlayerActivity : ComponentActivity() {
         sidecarIo = SidecarIo(this)
         videoTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         if (uris.isEmpty()) { finish(); return }
+        // 程序被回收後 Playlist 是空的，或已換成別的清單：對不上就當作沒有清單
+        playlistIndex = intent.getIntExtra(EXTRA_PLAYLIST_INDEX, -1)
+            .takeIf { Playlist.items.getOrNull(it)?.uris == uris } ?: -1
 
         val device = store.loadDevice()
         tracker = HeadTracker(this, display?.rotation ?: Surface.ROTATION_90).apply {
@@ -234,6 +241,8 @@ class PlayerActivity : ComponentActivity() {
         }
         when (a) {
             VrAction.PLAY_PAUSE -> playButton()
+            VrAction.VOL_UP -> adjustVolume(AudioManager.ADJUST_RAISE)
+            VrAction.VOL_DOWN -> adjustVolume(AudioManager.ADJUST_LOWER)
             else -> glView.queueEvent { handleOnGl(a, fromTap, heldMs) }
         }
     }
@@ -270,10 +279,17 @@ class PlayerActivity : ComponentActivity() {
                 } else if (!menu.visible) {
                     when (a) {
                         VrAction.SELECT, VrAction.BACK -> showMenu()
-                        // 按住左右：不要每 90ms 跳一次，最多每 0.6 秒跳 10 秒
-                        VrAction.LEFT, VrAction.RIGHT -> if (seekAllowed(heldMs)) {
-                            val ms = if (a == VrAction.LEFT) -10_000L else 10_000L
+                        // 鏡片校正面板收起時畫面是測試圖樣，左右改成切換圖樣（單手配置沒有倒退／快轉鍵）
+                        VrAction.LEFT, VrAction.RIGHT -> if (menu.concealed && menu.page === lensPage) {
+                            if (heldMs == 0L) cyclePattern(if (a == VrAction.LEFT) -1 else 1)
+                        // 按住左右：最多每 0.6 秒跳一次，按越久跳越遠
+                        } else if (seekAllowed(heldMs)) {
+                            val ms = seekStepMs(heldMs) * if (a == VrAction.LEFT) -1 else 1
                             runOnUiThread { seekBy(ms) }
+                        }
+                        // 上下：上一支／下一支。按住不連續切換；校正面板收起時不切，免得修改跟著影片一起丟掉
+                        VrAction.UP, VrAction.DOWN -> if (heldMs == 0L && !menu.concealed) {
+                            runOnUiThread { switchVideo(if (a == VrAction.UP) -1 else 1) }
                         }
                         else -> {}
                     }
@@ -284,7 +300,10 @@ class PlayerActivity : ComponentActivity() {
                     val nav = a.toNav() ?: return
                     val horizontal = a == VrAction.LEFT || a == VrAction.RIGHT
                     // 進度列按住左右跟選單關著時一樣節流，避免每 90ms 就對 NAS 發一次 seek
-                    if (horizontal && menu.focusedIsSeek() && !seekAllowed(heldMs)) return
+                    if (horizontal && menu.focusedIsSeek()) {
+                        if (!seekAllowed(heldMs)) return
+                        seekBarStepMs = seekStepMs(heldMs)
+                    }
                     // 數值項目按住左右會加速：越按越多格，校正時不用一格一格慢慢調
                     val times = if ((a == VrAction.LEFT || a == VrAction.RIGHT) && menu.focusedIsStepper())
                         stepsFor(heldMs) else 1
@@ -320,6 +339,17 @@ class PlayerActivity : ComponentActivity() {
         if (heldMs - lastHeldSeekMs < SEEK_HOLD_INTERVAL_MS) return false
         lastHeldSeekMs = heldMs
         return true
+    }
+
+    /** GL 執行緒：進度列這次左右要跳多遠（依按住時間，見 seekStepMs）。 */
+    private var seekBarStepMs = 10_000L
+
+    /** 按住時間 → 每次跳多遠：10 秒、30 秒、1 分、2 分。 */
+    private fun seekStepMs(heldMs: Long): Long = when {
+        heldMs < 2_000 -> 10_000L
+        heldMs < 4_000 -> 30_000L
+        heldMs < 6_000 -> 60_000L
+        else -> 120_000L
     }
 
     /** 按住時間 → 每次連發要走幾格。 */
@@ -519,6 +549,39 @@ class PlayerActivity : ComponentActivity() {
         else -> "播放錯誤（${e.errorCodeName}）"
     } + "。可以按「重試」。"
 
+    /** 主執行緒：切到清單裡的上一支（-1）或下一支（+1）。 */
+    private fun switchVideo(d: Int) {
+        val items = Playlist.items
+        val i = playlistIndex + d
+        if (playlistIndex < 0 || i !in items.indices) {
+            message = when {
+                playlistIndex < 0 -> "沒有影片清單，請從清單重新開啟"
+                d > 0 -> "已經是最後一支"
+                else -> "已經是第一支"
+            }
+            refreshStatus()
+            return
+        }
+        val item = items[i]
+        playlistIndex = i
+        uris = item.uris
+        labels = item.labels
+        sidecar = SidecarRef.decode(item.sidecar)
+        videoTitle = item.title
+        failedVariant = -1; playerFailed = false; playerEnded = false; message = ""
+        sceneLoaded = false
+        loadScene()
+        playVariant(0)
+    }
+
+    /** 主執行緒：調整媒體音量。VR 裡看不到系統音量面板，所以不顯示，改寫在選單狀態列。 */
+    private fun adjustVolume(direction: Int) {
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        am.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
+        message = "音量 ${am.getStreamVolume(AudioManager.STREAM_MUSIC)} / ${am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}"
+        refreshStatus()
+    }
+
     private fun togglePlay() {
         val p = player ?: return
         if (p.isPlaying) p.pause() else p.play()
@@ -596,7 +659,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val startPage: MenuPage by lazy {
         MenuPage(
-            title = videoTitle.ifBlank { "VR180 播放器" },
+            title = { videoTitle.ifBlank { "VR180 播放器" } },
             hint = { "戴好眼鏡、看向正前方，按任意鍵或點一下螢幕開始播放。" },
             rows = listOf(listOf(MenuItem.Button({ "開始播放" }) { startPlayback() })),
             onBack = { runOnUiThread { finish() } },
@@ -617,7 +680,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val mainPage: MenuPage by lazy {
         MenuPage(
-            title = videoTitle.ifBlank { "VR180 播放器" },
+            title = { videoTitle.ifBlank { "VR180 播放器" } },
             hint = { "沒有控制器：看著項目點螢幕；看別處點一下關閉選單；長按畫面重新置中。" },
             rows = listOf(
                 listOf(
@@ -637,7 +700,7 @@ class PlayerActivity : ComponentActivity() {
                     MenuItem.Seek(
                         label = { fmtTime(posMs) + " / " + if (durMs > 0) fmtTime(durMs) else "--:--" },
                         fraction = { if (durMs > 0) posMs.toFloat() / durMs else -1f },
-                        step = { d -> runOnUiThread { seekBy(d * 10_000L) } },
+                        step = { d -> val ms = d * seekBarStepMs; runOnUiThread { seekBy(ms) } },
                         seekTo = { f ->
                             val dur = durMs
                             if (dur > 0) runOnUiThread { player?.seekTo((f * dur).toLong()) }
@@ -657,7 +720,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val settingsPage: MenuPage by lazy {
         MenuPage(
-            title = "設定",
+            title = { "設定" },
             hint = { "鏡片校正：換眼鏡或手機時做一次。這支影片的校正：只有這支片拍歪時才需要。" },
             rows = listOf(
                 listOf(MenuItem.Button({ "鏡片校正" }) { openLens() }),
@@ -701,7 +764,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val scenePage: MenuPage by lazy {
         MenuPage(
-            title = "這支影片的校正",
+            title = { "這支影片的校正" },
             hint = {
                 "畫面中的主角或地平線不在正前方：按『設定正前方』。地平線左右歪：調『地平線』，" +
                     "讓影片的地平線對齊紅色水平線。"
@@ -734,7 +797,7 @@ class PlayerActivity : ComponentActivity() {
     /** 對準模式：使用者看向想要的正前方，按 A 或點螢幕。 */
     private val aimPage: MenuPage by lazy {
         MenuPage(
-            title = "設定正前方",
+            title = { "設定正前方" },
             hint = { "看向影片中想要放在正前方的位置（例如主角），按 A 或點一下螢幕。" },
             rows = listOf(listOf(MenuItem.Button({ "取消" }) { aiming = false; menu.open(scenePage) })),
             onBack = { aiming = false; menu.open(scenePage) },
@@ -762,7 +825,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val sceneAdvancedPage: MenuPage by lazy {
         MenuPage(
-            title = "這支影片的校正：進階",
+            title = { "這支影片的校正：進階" },
             hint = {
                 "微調正前方；看久眼睛吃力或近物重影，再調雙眼垂直差與匯聚。"
             },
@@ -803,7 +866,7 @@ class PlayerActivity : ComponentActivity() {
 
     private val lensPage: MenuPage by lazy {
         MenuPage(
-            title = "鏡片校正",
+            title = { "鏡片校正" },
             hint = {
                 "設定檔：${renderer.lens.name}\n" + if (renderer.mode == VrRenderer.Mode.CENTER)
                     "對中心：一次閉一隻眼。同心圓的圓心要在鏡片正中央，黃色外框四邊要被鏡片邊緣切掉一樣多。" +

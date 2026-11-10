@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.example.vr180.PlayerActivity
 import com.example.vr180.data.ProfileStore
+import com.example.vr180.player.Playlist
 import com.example.vr180.data.ProfileStore.BrowseOptions
 import com.example.vr180.data.ProfileStore.BrowseSort
 import com.example.vr180.source.FileSource
@@ -141,6 +142,13 @@ private fun group(found: List<Found>, sort: BrowseSort): List<ListRow.Video> {
         BrowseSort.SIZE -> videos.sortedByDescending { it.size }
     }
 }
+
+private fun ListRow.Video.toPlaylistItem(source: FileSource) = Playlist.Item(
+    uris = variants.map { source.playUri(it.second) },
+    labels = variants.map { it.first },
+    sidecar = source.sidecar(dirId, base).encode(),
+    title = base,
+)
 
 private fun formatDate(ms: Long): String? =
     if (ms <= 0) null else Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate().toString()
@@ -262,13 +270,16 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
                                 val now = SystemClock.uptimeMillis()
                                 if (now - lastOpen < 1500) return@clickable
                                 lastOpen = now
+                                // 整份清單照畫面上的順序交給播放器，搖桿上下可以切到上一支／下一支
+                                val videos = listing.rows.filterIsInstance<ListRow.Video>()
+                                Playlist.items = videos.map { it.toPlaylistItem(source) }
+                                val item = row.toPlaylistItem(source)
                                 context.startActivity(Intent(context, PlayerActivity::class.java).apply {
-                                    putStringArrayListExtra(PlayerActivity.EXTRA_URIS,
-                                        ArrayList(row.variants.map { source.playUri(it.second) }))
-                                    putStringArrayListExtra(PlayerActivity.EXTRA_LABELS,
-                                        ArrayList(row.variants.map { it.first }))
-                                    putExtra(PlayerActivity.EXTRA_SIDECAR, source.sidecar(row.dirId, row.base).encode())
-                                    putExtra(PlayerActivity.EXTRA_TITLE, row.base)
+                                    putStringArrayListExtra(PlayerActivity.EXTRA_URIS, ArrayList(item.uris))
+                                    putStringArrayListExtra(PlayerActivity.EXTRA_LABELS, ArrayList(item.labels))
+                                    putExtra(PlayerActivity.EXTRA_SIDECAR, item.sidecar)
+                                    putExtra(PlayerActivity.EXTRA_TITLE, item.title)
+                                    putExtra(PlayerActivity.EXTRA_PLAYLIST_INDEX, videos.indexOf(row))
                                 })
                             },
                         )

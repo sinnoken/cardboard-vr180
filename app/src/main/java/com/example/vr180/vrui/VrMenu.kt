@@ -40,7 +40,8 @@ sealed class MenuItem {
 }
 
 class MenuPage(
-    val title: String,
+    /** 每次重畫時讀取：切換影片後主選單的標題要跟著換。 */
+    val title: () -> String,
     val hint: () -> String,
     val rows: List<List<MenuItem>>,
     val onBack: () -> Unit,
@@ -309,7 +310,7 @@ class VrMenu {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val p = page ?: return
         canvas.drawRoundRect(RectF(0f, 0f, bmpW.toFloat(), bmpH.toFloat()), 36f, 36f, bg)
-        canvas.drawText(p.title, pad, pad + 52f, titlePaint)
+        canvas.drawText(p.title(), pad, pad + 52f, titlePaint)
 
         // 狀態（含錯誤訊息）放在說明前面：超過 5 行時被截掉的是說明，不是錯誤訊息
         val hint = listOf(if (p.showStatus) status else "", p.hint())
