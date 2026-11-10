@@ -153,6 +153,7 @@ class PlayerActivity : ComponentActivity() {
         tracker = HeadTracker(this, display?.rotation ?: Surface.ROTATION_90).apply {
             predictionMs = device.predictionMs
             yawDriftDegPerSec = device.yawDriftDegPerSec
+            fullRecenter = device.fullRecenter
         }
         renderer = VrRenderer(tracker) { s ->
             // GL 執行緒：GL context 重建後選單貼圖被換成 1×1 透明，要重畫一次，否則開著的選單會看不見
@@ -369,7 +370,7 @@ class PlayerActivity : ComponentActivity() {
         }
         if (replaceMenu) {
             replaceMenu = false
-            menu.placeInFront(head, if (menu.page === mainPage) null else CALIB_PANEL_PITCH)
+            menu.placeInFront(head, if (isCalibPage(menu.page)) CALIB_PANEL_PITCH else null)
         }
         if (menu.onFrame(head)) renderer.uploadUi(menu.bitmap)
         renderer.uiOn = menu.visible
@@ -714,14 +715,29 @@ class PlayerActivity : ComponentActivity() {
     private val settingsPage: MenuPage by lazy {
         MenuPage(
             title = { "設定" },
-            hint = { "鏡片校正：換眼鏡或手機時做一次。這支影片的校正：只有這支片拍歪時才需要。" },
+            hint = {
+                "鏡片校正：換眼鏡或手機時做一次。這支影片的校正：只有這支片拍歪時才需要。" +
+                    "置中方式：坐著、站著用「只轉水平」；躺著、側躺用「全方向」，換姿勢後再置中一次。"
+            },
             rows = listOf(
                 listOf(MenuItem.Button({ "鏡片校正" }) { openLens() }),
                 listOf(MenuItem.Button({ "這支影片的校正" }) { openScene() }),
+                listOf(MenuItem.Button({
+                    if (tracker.fullRecenter) "置中方式：全方向" else "置中方式：只轉水平"
+                }) { toggleFullRecenter() }),
                 listOf(MenuItem.Button({ "返回" }) { menu.open(mainPage) }),
             ),
             onBack = { menu.open(mainPage) },
         )
+    }
+
+    /** GL 執行緒：切換置中方式，記住並馬上用新方式重新置中。 */
+    private fun toggleFullRecenter() {
+        val full = !tracker.fullRecenter
+        tracker.fullRecenter = full
+        tracker.recenter()
+        replaceMenu = true
+        io.execute { store.saveDevice(store.loadDevice().copy(fullRecenter = full)) }
     }
 
     private fun backToMain() {

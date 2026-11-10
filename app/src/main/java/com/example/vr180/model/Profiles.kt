@@ -81,17 +81,20 @@ data class DeviceCalib(
     val pxPerMm: Float = 0f,            // 0 = 尚未校正，改用系統回報的 DPI
     val yawDriftDegPerSec: Float = 0f,  // 靜置量測到的水平漂移速率
     val predictionMs: Float = 25f,      // 頭部方向往前預測的時間
+    val fullRecenter: Boolean = false,  // 置中方式：false = 只轉水平，true = 全方向（躺著看）
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("pxPerMm", pxPerMm.toDouble())
         .put("yawDriftDegPerSec", yawDriftDegPerSec.toDouble())
         .put("predictionMs", predictionMs.toDouble())
+        .put("fullRecenter", fullRecenter)
 
     companion object {
         fun fromJson(o: JSONObject) = DeviceCalib(
             pxPerMm = o.optDouble("pxPerMm", 0.0).toFloat(),
             yawDriftDegPerSec = o.optDouble("yawDriftDegPerSec", 0.0).toFloat(),
             predictionMs = o.optDouble("predictionMs", 25.0).toFloat(),
+            fullRecenter = o.optBoolean("fullRecenter", false),
         )
     }
 }

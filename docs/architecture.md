@@ -145,8 +145,11 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 - 預測：`headMatrix(now)` 把方向往前推 `min(now − 最後樣本時間, 50 ms) + predictionMs`。
 - 座標：依 Activity 建立時的螢幕旋轉（`ROTATION_90`／`ROTATION_270`）重新對應軸，再把 Android 世界
   （東、北、上）換成 GL 世界（x = 東、y = 上、z = 南，眼睛看 −z）。
-- 重新置中：下一幀把目前面向的水平角記為 `yaw0`，並重設漂移計時起點 `tRef`。
-- 漂移補償：輸出 `rotY(yaw0 + yawDriftDegPerSec·(now − tRef)) · G`。
+- 重新置中：下一幀把目前面向的水平角記為 `yaw0`、完整方向記為 `ref`，並重設漂移計時起點 `tRef`。
+- 輸出（`tracking/Recenter.kt`，`drift = yawDriftDegPerSec·(now − tRef)`）：
+  - 只轉水平：`rotY(yaw0 + drift) · G`。仰俯與傾斜由重力鎖定，地平線跟真實世界對齊。
+  - 全方向（`fullRecenter`）：`refᵀ · rotY(drift) · G`。置中當下的方向就是正前方，躺著、側躺也端正；
+    地平線不再跟重力對齊，換姿勢要再置中。
 
 `DriftMeter`（陀螺儀檢測頁）：按開始後等 1.5 秒，取樣 15 秒，以最小平方法擬合「水平角 vs 時間」的斜率；
 螢幕法線傾角餘弦變化超過 0.02 判定手機被移動，樣本少於 50 個判定樣本不足，兩者都不存檔。

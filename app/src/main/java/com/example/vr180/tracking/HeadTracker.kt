@@ -19,7 +19,7 @@ import kotlin.math.sqrt
  * - 使用 GAME_ROTATION_VECTOR：系統感測器融合已自動估算陀螺儀零偏，pitch/roll 由重力鎖定；
  *   刻意不用磁力計（手機內部干擾大、會跳）。代價是水平方向（yaw）會緩慢漂移。
  * - 漂移補償：用靜置檢測量到的漂移速率做線性抵銷。
- * - 重新置中：把目前面向設為正前方，同時重設漂移計時。
+ * - 重新置中：把目前面向設為正前方，同時重設漂移計時。fullRecenter 時連仰俯與傾斜一起重設（見 recenteredHead）。
  * - 延遲預測：依角速度把方向往前推算 predictionMs，減少轉頭時畫面拖曳感。
  *
  * 輸出座標系（GL 世界）：x = 東、y = 上、z = 南；眼睛看向 -z。
@@ -28,6 +28,7 @@ class HeadTracker(context: Context, private val displayRotation: Int) : SensorEv
 
     @Volatile var predictionMs = 25f
     @Volatile var yawDriftDegPerSec = 0f
+    @Volatile var fullRecenter = false
 
     private val sm = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val sensor: Sensor? = sm.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
@@ -40,6 +41,7 @@ class HeadTracker(context: Context, private val displayRotation: Int) : SensorEv
     private var hasSample = false
 
     private var yaw0 = 0f
+    private var ref = M3.identity()               // 置中當下的完整方向（全方向置中用）
     private var tRef = 0L
     @Volatile private var recenterPending = true
 
@@ -110,11 +112,12 @@ class HeadTracker(context: Context, private val displayRotation: Int) : SensorEv
         if (recenterPending) {
             // 正前方 = G * (0,0,-1)
             yaw0 = atan2(-g[2], g[8])
+            ref = g
             tRef = nowNanos
             recenterPending = false
         }
         val drift = Math.toRadians(yawDriftDegPerSec.toDouble()).toFloat() * (nowNanos - tRef) * 1e-9f
-        return M3.mul(M3.rotY(yaw0 + drift), g)
+        return recenteredHead(g, ref, yaw0, drift, fullRecenter)
     }
 
     private fun qMul(a: FloatArray, b: FloatArray) = floatArrayOf(
