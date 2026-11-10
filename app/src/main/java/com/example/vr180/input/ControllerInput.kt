@@ -11,6 +11,8 @@ import kotlin.math.abs
 /** 播放器層級的動作，與實際按鍵無關。 */
 enum class VrAction {
     UP, DOWN, LEFT, RIGHT, SELECT, BACK, MENU, RECENTER, PLAY_PAUSE, SEEK_BACK, SEEK_FWD,
+    /** A＋R2 同時送出（單手控制器的扳機）：選單開著＝選取，關著＝播放／暫停。 */
+    TRIGGER,
 }
 
 /**
@@ -24,7 +26,8 @@ enum class VrAction {
  *   Start / Y / Menu                → 開關選單
  *   X / Select / 左搖桿按下          → 重新置中
  *   L1 / R1 / 上一首 / 下一首 / 快退 / 快轉 → 倒退 / 快轉 10 秒
- *   播放暫停鍵 / 空白鍵 / R2         → 播放 / 暫停（R2 同時送出的 A 會被忽略）
+ *   播放暫停鍵 / 空白鍵 / R2         → 播放 / 暫停
+ *   A＋R2 同時送出（單手控制器的扳機）→ 選單開著＝選取，關著＝播放 / 暫停
  *   音量鍵                          → 交給系統
  */
 class ControllerInput(
@@ -48,23 +51,27 @@ class ControllerInput(
     private var axisDirX = 0
     private var axisDirY = 0
 
-    // 有些控制器按 R2 會同時送出 BUTTON_A 和 BUTTON_R2，先後順序不一定。
-    // A 先等 CHORD_MS 才算「選取」，期間收到 R2 就丟掉；R2 之後 CHORD_MS 內的 A 也忽略。
-    private var lastR2At = -CHORD_MS
-    private val pendingSelect = Runnable { onAction(VrAction.SELECT, 0L) }
+    // 單手控制器（例如 MOCUTE-052）沒有獨立的 A 鍵，扳機會同時送出 BUTTON_A 和 BUTTON_R2，先後不一定。
+    // A 與 R2 都先等 CHORD_MS：期間收到另一個就合成 TRIGGER，否則照原本的對應。
+    private var pendingKey = 0
+    private val pendingRunnable = Runnable {
+        map(pendingKey)?.let { onAction(it, 0L) }
+        pendingKey = 0
+    }
 
     fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val a = map(keyCode) ?: return false
         if (event.repeatCount > 0) return true          // 自己處理連發，忽略系統的
-        when (keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> {
-                if (event.eventTime - lastR2At >= CHORD_MS) handler.postDelayed(pendingSelect, CHORD_MS)
-                return true
+        if (keyCode in CHORD_KEYS) {
+            handler.removeCallbacks(pendingRunnable)
+            if (pendingKey != 0 && pendingKey != keyCode) {
+                pendingKey = 0
+                onAction(VrAction.TRIGGER, 0L)
+            } else {
+                pendingKey = keyCode
+                handler.postDelayed(pendingRunnable, CHORD_MS)
             }
-            KeyEvent.KEYCODE_BUTTON_R2 -> {
-                lastR2At = event.eventTime
-                handler.removeCallbacks(pendingSelect)
-            }
+            return true
         }
         onAction(a, 0L)
         if (a in REPEATABLE) startRepeat(a)
@@ -105,7 +112,8 @@ class ControllerInput(
 
     fun cancel() {
         stopRepeat()
-        handler.removeCallbacks(pendingSelect)
+        handler.removeCallbacks(pendingRunnable)
+        pendingKey = 0
     }
 
     private fun dir(v: Float) = when {
@@ -133,6 +141,7 @@ class ControllerInput(
         private const val REPEAT_DELAY_MS = 400L
         private const val REPEAT_MS = 90L
         const val CHORD_MS = 80L
+        val CHORD_KEYS = setOf(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_R2)
         private val REPEATABLE = setOf(VrAction.UP, VrAction.DOWN, VrAction.LEFT, VrAction.RIGHT)
 
         /** 按鍵測試頁用的中文名稱。 */
@@ -141,6 +150,7 @@ class ControllerInput(
             VrAction.SELECT -> "選取"; VrAction.BACK -> "返回"; VrAction.MENU -> "開關選單"
             VrAction.RECENTER -> "重新置中"; VrAction.PLAY_PAUSE -> "播放/暫停"
             VrAction.SEEK_BACK -> "倒退 10 秒"; VrAction.SEEK_FWD -> "快轉 10 秒"
+            VrAction.TRIGGER -> "選單開著＝選取，關著＝播放/暫停"
         }
 
         fun map(keyCode: Int): VrAction? = when (keyCode) {

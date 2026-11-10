@@ -235,6 +235,9 @@ class PlayerActivity : ComponentActivity() {
     /** GL 執行緒。 */
     private fun handleOnGl(a: VrAction, fromTap: Boolean, heldMs: Long) {
         when (a) {
+            VrAction.TRIGGER ->
+                if (menu.visible || aiming) handleOnGl(VrAction.SELECT, fromTap, heldMs)
+                else runOnUiThread { playButton() }
             VrAction.RECENTER -> { tracker.recenter(); replaceMenu = menu.visible }
             // 選單鍵在校正頁 = 不儲存離開（先還原，避免修改在不知情下被丟掉或留著）
             VrAction.MENU -> if (menu.visible) { discardCalibration(); closeMenu() } else menu.show(mainPage, lastHead)

@@ -16,11 +16,11 @@ object InputLog {
 
     private val lastBucket = HashMap<Int, Int>()
     private var lastMouseMs = 0L
-    private var lastR2At = -ControllerInput.CHORD_MS
-    private var lastA: String? = null
-    private var lastAAt = 0L
+    private var chordKey = 0
+    private var chordAt = 0L
+    private var chordLine: String? = null
 
-    fun clear() { lines.clear(); lastBucket.clear(); lastA = null }
+    fun clear() { lines.clear(); lastBucket.clear(); chordLine = null }
 
     private fun add(s: String) {
         lines.add(0, s)
@@ -34,19 +34,18 @@ object InputLog {
             ?: if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
                 "→ 交給系統調音量" else "→ App 不認得"
         val line = "按鍵 $name（${e.keyCode}）$mapped · ${e.device?.name ?: "?"}"
-        // 與 ControllerInput 相同的規則：R2 前後 CHORD_MS 內的 A 不算「選取」
+        // 與 ControllerInput 相同的規則：A 與 R2 在 CHORD_MS 內先後送出，合成一次扳機
         val t = e.eventTime
-        when (e.keyCode) {
-            KeyEvent.KEYCODE_BUTTON_A -> {
-                if (t - lastR2At < ControllerInput.CHORD_MS) { add("$line（R2 同時送出，忽略）"); return }
-                lastA = line; lastAAt = t
+        if (e.keyCode in ControllerInput.CHORD_KEYS) {
+            val prev = chordLine
+            if (prev != null && chordKey != e.keyCode && t - chordAt < ControllerInput.CHORD_MS) {
+                lines.indexOf(prev).takeIf { it >= 0 }?.let { lines[it] = "$prev（合併）" }
+                add("$line（合併）")
+                add("扳機（A＋R2 同時送出）→ ${ControllerInput.label(VrAction.TRIGGER)} · ${e.device?.name ?: "?"}")
+                chordLine = null
+                return
             }
-            KeyEvent.KEYCODE_BUTTON_R2 -> {
-                lastR2At = t
-                val i = lastA?.let { lines.indexOf(it) } ?: -1
-                if (i >= 0 && t - lastAAt < ControllerInput.CHORD_MS) lines[i] = "${lastA}（R2 同時送出，忽略）"
-                lastA = null
-            }
+            chordKey = e.keyCode; chordAt = t; chordLine = line
         }
         add(line)
     }
