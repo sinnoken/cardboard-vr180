@@ -98,7 +98,7 @@ private fun App(store: ProfileStore) {
                 Screen.SCREEN_CALIB -> ScreenCalibScreen(store)
                 Screen.GYRO -> GyroTestScreen(store)
                 Screen.LENSES -> LensProfilesScreen(store) { screen = Screen.HOME }
-                Screen.KEY_TEST -> KeyTestScreen()
+                Screen.KEY_TEST -> KeyTestScreen(store)
             }
         }
     }

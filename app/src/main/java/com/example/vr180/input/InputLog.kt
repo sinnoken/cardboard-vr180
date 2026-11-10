@@ -3,7 +3,10 @@ package com.example.vr180.input
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlin.math.abs
 
 /**
@@ -13,6 +16,12 @@ import kotlin.math.abs
 object InputLog {
     @Volatile var active = false
     val lines = mutableStateListOf<String>()
+
+    /** 測試頁目前選的配置，紀錄依它顯示 App 會做什麼。 */
+    @Volatile var choice = ControllerChoice.AUTO
+
+    /** 最後一個送出訊號的控制器名稱，讓測試頁顯示「自動」解析成哪一組。 */
+    var lastDevice by mutableStateOf<String?>(null)
 
     private val lastBucket = HashMap<Int, Int>()
     private var lastMouseMs = 0L
@@ -29,8 +38,9 @@ object InputLog {
 
     fun onKey(e: KeyEvent) {
         if (e.action != KeyEvent.ACTION_DOWN || e.repeatCount > 0) return
+        e.device?.name?.let { lastDevice = it }
         val name = KeyEvent.keyCodeToString(e.keyCode).removePrefix("KEYCODE_")
-        val mapped = ControllerInput.map(e.keyCode)?.let { "→ " + ControllerInput.label(it) }
+        val mapped = choice.resolve(e.device?.name).map(e.keyCode)?.let { "→ " + ControllerInput.label(it) }
             ?: if (e.keyCode == KeyEvent.KEYCODE_VOLUME_UP || e.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
                 "→ 交給系統調音量" else "→ App 不認得"
         val line = "按鍵 $name（${e.keyCode}）$mapped · ${e.device?.name ?: "?"}"
@@ -63,6 +73,7 @@ object InputLog {
         }
         if (e.action != MotionEvent.ACTION_MOVE) return
         val dev = e.device ?: return
+        lastDevice = dev.name
         // 只在某個軸「推到底 / 放開」時記一筆，避免洗版
         for (r in dev.motionRanges) {
             val axis = r.axis
@@ -76,6 +87,8 @@ object InputLog {
                     val use = when (axis) {
                         MotionEvent.AXIS_X, MotionEvent.AXIS_HAT_X -> if (bucket > 0) "→ 右" else "→ 左"
                         MotionEvent.AXIS_Y, MotionEvent.AXIS_HAT_Y -> if (bucket > 0) "→ 下" else "→ 上"
+                        MotionEvent.AXIS_GAS, MotionEvent.AXIS_RTRIGGER,
+                        MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_LTRIGGER -> "→ 扳機按多深，App 只看按鍵，可忽略"
                         else -> "→ App 不使用"
                     }
                     add("搖桿 $name ${if (bucket > 0) "+" else "−"} $use · ${dev.name}")

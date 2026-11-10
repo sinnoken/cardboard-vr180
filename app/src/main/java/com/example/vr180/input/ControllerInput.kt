@@ -11,26 +11,17 @@ import kotlin.math.abs
 /** 播放器層級的動作，與實際按鍵無關。 */
 enum class VrAction {
     UP, DOWN, LEFT, RIGHT, SELECT, BACK, MENU, RECENTER, PLAY_PAUSE, SEEK_BACK, SEEK_FWD,
-    /** A＋R2 同時送出（單手控制器的扳機）：選單開著＝選取，關著＝播放／暫停。 */
+    /** 選單開著＝選取，關著＝播放／暫停（單手控制器的扳機與 R1）。 */
     TRIGGER,
 }
 
 /**
  * 藍芽控制器輸入：手把、D-pad 遙控器、多媒體遙控器、鍵盤都會被 Android 當成 HID 輸入裝置，
- * 事件直接送進 Activity，不需要藍芽權限。
- *
- * 對應表（同時列在 README）：
- *   D-pad / 左搖桿 / 方向鍵         → 上下左右（按住會連續觸發）
- *   A / 確認 / Enter / D-pad 中鍵     → 選取
- *   B / 返回 / Esc                  → 返回
- *   Start / Y / Menu                → 開關選單
- *   X / Select / 左搖桿按下          → 重新置中
- *   L1 / R1 / 上一首 / 下一首 / 快退 / 快轉 → 倒退 / 快轉 10 秒
- *   播放暫停鍵 / 空白鍵 / R2         → 播放 / 暫停
- *   A＋R2 同時送出（單手控制器的扳機）→ 選單開著＝選取，關著＝播放 / 暫停
- *   音量鍵                          → 交給系統
+ * 事件直接送進 Activity，不需要藍芽權限。按鍵對應依 [ControllerProfile]，音量鍵交給系統。
  */
 class ControllerInput(
+    /** 使用者選的配置；每次按鍵時依事件的控制器名稱解析。 */
+    private val choice: () -> ControllerChoice,
     /** heldMs = 0 表示剛按下；連發時是已經按住的毫秒數，讓呼叫端決定要加速或節流。 */
     private val onAction: (action: VrAction, heldMs: Long) -> Unit,
 ) {
@@ -51,18 +42,22 @@ class ControllerInput(
     private var axisDirX = 0
     private var axisDirY = 0
 
-    // 單手控制器（例如 MOCUTE-052）沒有獨立的 A 鍵，扳機會同時送出 BUTTON_A 和 BUTTON_R2，先後不一定。
-    // A 與 R2 都先等 CHORD_MS：期間收到另一個就合成 TRIGGER，否則照原本的對應。
+    // 沒被認出的單手控制器用標準配置時，扳機一樣會送出 A＋R2（先後不一定）。
+    // A 與 R2 都先等 CHORD_MS：期間收到另一個就合成 TRIGGER，否則照標準配置。
     private var pendingKey = 0
     private val pendingRunnable = Runnable {
-        map(pendingKey)?.let { onAction(it, 0L) }
+        ControllerProfile.STANDARD.map(pendingKey)?.let { onAction(it, 0L) }
         pendingKey = 0
     }
 
+    // 單手配置下 A、R2 都是 TRIGGER：同一次扳機會送兩個，只算一次
+    private var lastTriggerAt = -CHORD_MS
+
     fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        val a = map(keyCode) ?: return false
+        val profile = choice().resolve(event.device?.name)
+        val a = profile.map(keyCode) ?: return false
         if (event.repeatCount > 0) return true          // 自己處理連發，忽略系統的
-        if (keyCode in CHORD_KEYS) {
+        if (profile == ControllerProfile.STANDARD && keyCode in CHORD_KEYS) {
             handler.removeCallbacks(pendingRunnable)
             if (pendingKey != 0 && pendingKey != keyCode) {
                 pendingKey = 0
@@ -73,13 +68,17 @@ class ControllerInput(
             }
             return true
         }
+        if (a == VrAction.TRIGGER && keyCode in CHORD_KEYS) {
+            if (event.eventTime - lastTriggerAt < CHORD_MS) return true
+            lastTriggerAt = event.eventTime
+        }
         onAction(a, 0L)
         if (a in REPEATABLE) startRepeat(a)
         return true
     }
 
     fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        val a = map(keyCode) ?: return false
+        val a = choice().resolve(event.device?.name).map(keyCode) ?: return false
         if (repeating == a) stopRepeat()
         return true
     }
@@ -151,27 +150,6 @@ class ControllerInput(
             VrAction.RECENTER -> "重新置中"; VrAction.PLAY_PAUSE -> "播放/暫停"
             VrAction.SEEK_BACK -> "倒退 10 秒"; VrAction.SEEK_FWD -> "快轉 10 秒"
             VrAction.TRIGGER -> "選單開著＝選取，關著＝播放/暫停"
-        }
-
-        fun map(keyCode: Int): VrAction? = when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> VrAction.UP
-            KeyEvent.KEYCODE_DPAD_DOWN -> VrAction.DOWN
-            KeyEvent.KEYCODE_DPAD_LEFT -> VrAction.LEFT
-            KeyEvent.KEYCODE_DPAD_RIGHT -> VrAction.RIGHT
-            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> VrAction.SELECT
-            KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> VrAction.BACK
-            KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_MENU -> VrAction.MENU
-            KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_SELECT,
-            KeyEvent.KEYCODE_BUTTON_THUMBL -> VrAction.RECENTER
-            KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_MEDIA_REWIND,
-            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> VrAction.SEEK_BACK
-            KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
-            KeyEvent.KEYCODE_MEDIA_NEXT -> VrAction.SEEK_FWD
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
-            KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_SPACE,
-            KeyEvent.KEYCODE_BUTTON_R2 -> VrAction.PLAY_PAUSE
-            else -> null
         }
     }
 }

@@ -95,6 +95,23 @@ class VrMenu {
         dirty = true
     }
 
+    /** 暫時收起面板，保留目前頁面與焦點（校正時看清楚測試圖樣）。 */
+    fun conceal() {
+        visible = false
+        dirty = true
+    }
+
+    /** conceal() 收起的面板。 */
+    val concealed get() = !visible && page != null
+
+    /** 重新顯示 conceal() 收起的面板，放回視線前方。 */
+    fun reveal(head: FloatArray, pitchDeg: Float?) {
+        if (page == null) return
+        placeInFront(head, pitchDeg)
+        visible = true
+        dirty = true
+    }
+
     fun invalidate() { dirty = true }
 
     /**

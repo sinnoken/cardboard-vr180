@@ -29,6 +29,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.example.vr180.data.ProfileStore
+import com.example.vr180.input.ControllerChoice
 import com.example.vr180.input.ControllerInput
 import com.example.vr180.input.VrAction
 import com.example.vr180.model.LensProfile
@@ -73,6 +74,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var renderer: VrRenderer
     private lateinit var glView: GLSurfaceView
     private lateinit var input: ControllerInput
+    private var controllerChoice = ControllerChoice.AUTO
     private val menu = VrMenu()
     private val io = Executors.newSingleThreadExecutor()
 
@@ -165,7 +167,8 @@ class PlayerActivity : ComponentActivity() {
         })
         glView.setOnTouchListener { _, ev -> gestures.onTouchEvent(ev); true }
 
-        input = ControllerInput { a, held -> dispatch(a, heldMs = held) }
+        controllerChoice = store.loadControllerChoice()
+        input = ControllerInput({ controllerChoice }) { a, held -> dispatch(a, heldMs = held) }
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = dispatch(VrAction.BACK)
         })
@@ -226,8 +229,6 @@ class PlayerActivity : ComponentActivity() {
         }
         when (a) {
             VrAction.PLAY_PAUSE -> playButton()
-            VrAction.SEEK_BACK -> seekBy(-10_000)
-            VrAction.SEEK_FWD -> seekBy(10_000)
             else -> glView.queueEvent { handleOnGl(a, fromTap, heldMs) }
         }
     }
@@ -235,18 +236,35 @@ class PlayerActivity : ComponentActivity() {
     /** GL 執行緒。 */
     private fun handleOnGl(a: VrAction, fromTap: Boolean, heldMs: Long) {
         when (a) {
-            VrAction.TRIGGER ->
-                if (menu.visible || aiming) handleOnGl(VrAction.SELECT, fromTap, heldMs)
-                else runOnUiThread { playButton() }
+            // 鏡片校正時倒退／快轉鍵用來切換測試圖樣（面板收起時也可以），其他時候跳 10 秒
+            VrAction.SEEK_BACK, VrAction.SEEK_FWD -> {
+                val d = if (a == VrAction.SEEK_FWD) 1 else -1
+                if (menu.page === lensPage) cyclePattern(d) else runOnUiThread { seekBy(d * 10_000L) }
+            }
+            VrAction.TRIGGER -> when {
+                menu.concealed -> showMenu()
+                menu.visible || aiming -> handleOnGl(VrAction.SELECT, fromTap, heldMs)
+                else -> runOnUiThread { playButton() }
+            }
             VrAction.RECENTER -> { tracker.recenter(); replaceMenu = menu.visible }
-            // 選單鍵在校正頁 = 不儲存離開（先還原，避免修改在不知情下被丟掉或留著）
-            VrAction.MENU -> if (menu.visible) { discardCalibration(); closeMenu() } else menu.show(mainPage, lastHead)
+            // 校正頁按選單鍵只收起面板、保留修改，再按一次回到同一頁；放棄修改只有 B 與「取消」
+            VrAction.MENU -> when {
+                menu.concealed -> showMenu()
+                menu.visible && isCalibPage(menu.page) -> {
+                    if (aiming) { aiming = false; menu.open(scenePage) }
+                    menu.conceal()
+                }
+                menu.visible -> closeMenu()
+                else -> showMenu()
+            }
             else -> {
-                if (aiming && a == VrAction.SELECT && !(fromTap && menu.isGazingAtItem())) {
+                if (menu.concealed && (a == VrAction.SELECT || a == VrAction.BACK)) {
+                    showMenu()
+                } else if (aiming && a == VrAction.SELECT && !(fromTap && menu.isGazingAtItem())) {
                     captureFront()
                 } else if (!menu.visible) {
                     when (a) {
-                        VrAction.SELECT, VrAction.BACK -> menu.show(mainPage, lastHead)
+                        VrAction.SELECT, VrAction.BACK -> showMenu()
                         // 按住左右：不要每 90ms 跳一次，最多每 0.6 秒跳 10 秒
                         VrAction.LEFT, VrAction.RIGHT -> if (seekAllowed(heldMs)) {
                             val ms = if (a == VrAction.LEFT) -10_000L else 10_000L
@@ -266,6 +284,24 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** GL 執行緒：叫出選單。校正頁被收起時回到那一頁，否則開主選單。 */
+    private fun showMenu() {
+        if (menu.concealed) menu.reveal(lastHead, CALIB_PANEL_PITCH)
+        else menu.show(mainPage, lastHead)
+    }
+
+    private fun isCalibPage(p: MenuPage?) =
+        p === lensPage || p === scenePage || p === sceneAdvancedPage || p === aimPage
+
+    private val patterns = listOf(VrRenderer.Mode.CENTER, VrRenderer.Mode.NONIUS, VrRenderer.Mode.GRID)
+
+    /** GL 執行緒：鏡片校正的測試圖樣往前／往後切換一個。 */
+    private fun cyclePattern(d: Int) {
+        val i = patterns.indexOf(renderer.mode).coerceAtLeast(0)
+        renderer.mode = patterns[(i + d + patterns.size) % patterns.size]
+        menu.invalidate()
     }
 
     private var lastHeldSeekMs = 0L
@@ -322,7 +358,7 @@ class PlayerActivity : ComponentActivity() {
                         d.supportsSource(InputDevice.SOURCE_DPAD) ||
                         d.supportsSource(InputDevice.SOURCE_KEYBOARD))
                 }
-                .map { it.name }.distinct()
+                .map { "${it.name}（${controllerChoice.resolve(it.name).label}）" }.distinct()
             controllerName = if (names.isEmpty()) "未連線" else names.joinToString("、")
             refreshStatus()
         }
@@ -378,7 +414,7 @@ class PlayerActivity : ComponentActivity() {
                         playerFailed = true
                         message = playbackErrorText(error)
                         refreshStatus()
-                        glView.queueEvent { if (!menu.visible) menu.show(mainPage, lastHead) }
+                        glView.queueEvent { if (!menu.visible) showMenu() }
                     }
                 }
             }
@@ -392,7 +428,7 @@ class PlayerActivity : ComponentActivity() {
                 playerEnded = state == Player.STATE_ENDED
                 if (state == Player.STATE_READY) playerFailed = false
                 refreshStatus()
-                if (playerEnded) glView.queueEvent { if (!menu.visible) menu.show(mainPage, lastHead) }
+                if (playerEnded) glView.queueEvent { if (!menu.visible) showMenu() }
             }
 
             override fun onVideoSizeChanged(size: VideoSize) {
@@ -446,7 +482,7 @@ class PlayerActivity : ComponentActivity() {
             playerFailed = true
             player?.stop()
             refreshStatus()
-            glView.queueEvent { if (!menu.visible) menu.show(mainPage, lastHead) }
+            glView.queueEvent { if (!menu.visible) showMenu() }
         }
     }
 

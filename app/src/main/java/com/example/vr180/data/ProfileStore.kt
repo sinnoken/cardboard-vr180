@@ -1,6 +1,7 @@
 package com.example.vr180.data
 
 import android.content.Context
+import com.example.vr180.input.ControllerChoice
 import com.example.vr180.model.DeviceCalib
 import com.example.vr180.model.LensProfile
 import com.example.vr180.model.SceneCalib
@@ -23,6 +24,12 @@ class ProfileStore(context: Context) {
         read("device.json")?.let(DeviceCalib::fromJson) ?: DeviceCalib()
 
     @Synchronized fun saveDevice(d: DeviceCalib) = write("device.json", d.toJson())
+
+    @Synchronized fun loadControllerChoice(): ControllerChoice =
+        ControllerChoice.parse(read("controller.json")?.optString("choice"))
+
+    @Synchronized fun saveControllerChoice(c: ControllerChoice) =
+        write("controller.json", JSONObject().put("choice", c.name))
 
     @Synchronized fun loadConnection(): SmbConnection =
         read("connection.json")?.let(SmbConnection::fromJson) ?: SmbConnection()
