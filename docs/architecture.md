@@ -165,6 +165,7 @@ HeadTracker ──▶ VrRenderer 著色器：螢幕像素 → 鏡片畸變校正
 2. 取頭部矩陣 `H`（世界 ← 螢幕），呼叫 `frameHook`（選單的視線判定與重畫，見下節）。
 3. 計算鏡片中心（視窗像素座標，`W`、`Hpx` 是整個視窗寬高，`p` 是 `pxPerMm`）：
    - 垂直基準 `cy`：`BOTTOM` = `lensHeightMm·p`；`TOP` = `Hpx − lensHeightMm·p`；`CENTER` = `Hpx/2 + lensHeightMm·p`。
+     鏡片校正切換基準時，`lensHeightMm` 依螢幕高度（`Hpx / p`）換算，鏡片中心的實際位置不變（`player/PlayerMath.kt` 的 `changeLensAlignment`）。
    - 兩眼半距 `s = interLensMm/2·p`，傾斜角 `θ = tiltDeg`，`side` 左眼 −1、右眼 +1：
      `cx = W/2 + offsetXMm·p + side·s·cosθ`，`cy_eye = cy + side·s·sinθ`。
      手機歪斜只移動鏡片中心，不旋轉畫面（陀螺儀量的就是手機方向）。

@@ -57,6 +57,9 @@ class VrRenderer(
     private val texMatrix = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
     private var width = 1
     private var height = 1
+
+    /** 螢幕高度（橫放時的短邊）毫米。GL 畫面還沒建立時是 0。 */
+    val screenHeightMm: Float get() = if (height > 1 && pxPerMm > 0f) height / pxPerMm else 0f
     private val loc = HashMap<String, Int>()
 
     private val quad = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()

@@ -38,6 +38,7 @@ import com.example.vr180.model.SceneCalib
 import com.example.vr180.model.VerticalAlignment
 import com.example.vr180.player.HardwareOnly
 import com.example.vr180.player.Playlist
+import com.example.vr180.player.changeLensAlignment
 import com.example.vr180.player.fmtTime
 import com.example.vr180.player.moveLensVertical
 import com.example.vr180.player.seekStepMs
@@ -922,9 +923,10 @@ class PlayerActivity : ComponentActivity() {
                             VerticalAlignment.TOP -> "上緣"
                         }
                     }) {
+                        // 只換表示方式：數值依螢幕高度換算，畫面不會跳
                         val all = VerticalAlignment.entries
-                        renderer.lens = renderer.lens.copy(
-                            alignment = all[(renderer.lens.alignment.ordinal + 1) % all.size])
+                        val next = all[(renderer.lens.alignment.ordinal + 1) % all.size]
+                        renderer.lens = changeLensAlignment(renderer.lens, next, renderer.screenHeightMm)
                     },
                 ),
                 listOf(lensStep("鏡片間距", 0.2f, "%.1f mm", 45f, 80f, { it.interLensMm }) { l, v -> l.copy(interLensMm = v) }),

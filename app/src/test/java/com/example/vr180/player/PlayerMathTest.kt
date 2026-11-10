@@ -34,6 +34,19 @@ class PlayerMathTest {
         assertEquals(0f, wrap180(720f), 1e-4f)
     }
 
+    @Test fun changingAlignmentKeepsLensCenterInPlace() {
+        // 螢幕高 66 mm；鏡片中心離下緣 35 mm = 離上緣 31 mm = 中心往上 2 mm
+        val bottom = LensProfile.cardboardDefault().copy(alignment = VerticalAlignment.BOTTOM, lensHeightMm = 35f)
+        val center = changeLensAlignment(bottom, VerticalAlignment.CENTER, 66f)
+        assertEquals(VerticalAlignment.CENTER, center.alignment)
+        assertEquals(2f, center.lensHeightMm, 1e-4f)
+        val top = changeLensAlignment(center, VerticalAlignment.TOP, 66f)
+        assertEquals(31f, top.lensHeightMm, 1e-4f)
+        assertEquals(35f, changeLensAlignment(top, VerticalAlignment.BOTTOM, 66f).lensHeightMm, 1e-4f)
+        // 螢幕高度還不知道：只換基準
+        assertEquals(35f, changeLensAlignment(bottom, VerticalAlignment.CENTER, 0f).lensHeightMm, 1e-4f)
+    }
+
     @Test fun movesLensUpRegardlessOfAlignment() {
         val base = LensProfile.cardboardDefault()
         // 「往上」在下緣基準是距離變大，在上緣基準是距離變小

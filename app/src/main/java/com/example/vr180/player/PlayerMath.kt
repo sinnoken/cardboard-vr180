@@ -36,6 +36,26 @@ fun moveLensVertical(l: LensProfile, up: Float): LensProfile = when (l.alignment
     VerticalAlignment.CENTER -> l.copy(lensHeightMm = (l.lensHeightMm + up).coerceIn(-30f, 30f))
 }
 
+/**
+ * 換鏡片中心的上下基準，同時換算 lensHeightMm，讓鏡片中心在螢幕上的實際位置不變。
+ * screenHeightMm 不知道（≤ 0）時只能直接換基準。
+ */
+fun changeLensAlignment(l: LensProfile, to: VerticalAlignment, screenHeightMm: Float): LensProfile {
+    if (screenHeightMm <= 0f) return l.copy(alignment = to)
+    val h = screenHeightMm
+    val fromBottom = when (l.alignment) {
+        VerticalAlignment.BOTTOM -> l.lensHeightMm
+        VerticalAlignment.TOP -> h - l.lensHeightMm
+        VerticalAlignment.CENTER -> h / 2f + l.lensHeightMm
+    }
+    val value = when (to) {
+        VerticalAlignment.BOTTOM -> fromBottom
+        VerticalAlignment.TOP -> h - fromBottom
+        VerticalAlignment.CENTER -> fromBottom - h / 2f
+    }
+    return l.copy(alignment = to, lensHeightMm = value)
+}
+
 /** 角度換到 (-180, 180]。 */
 fun wrap180(v: Float): Float {
     var x = v
