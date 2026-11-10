@@ -75,14 +75,23 @@ private sealed class ListRow {
     }
 }
 
+/** 掃描結果（還沒排序、還沒過濾）：排序與「隱藏小檔」在記憶體裡套用，改選項不必重新掃 NAS。 */
+private class Scan(val dirs: List<FsEntry>, val videos: List<Found>, val skippedDirs: Int)
+
 private class Listing(val rows: List<ListRow>, val skippedDirs: Int)
+
+private fun Scan.toListing(opt: BrowseOptions): Listing {
+    val shown = if (opt.hideSmall) videos.filter { it.entry.size !in 0 until SMALL_BYTES } else videos
+    val dirRows = dirs.sortedBy { it.name.lowercase() }.map { ListRow.Dir(it) }
+    return Listing(dirRows + group(shown, opt.sort), skippedDirs)
+}
 
 private fun isVideo(e: FsEntry) = !e.isDir && e.name.substringAfterLast('.', "").lowercase() in VIDEO_EXT
 
 /** 列出目前資料夾；包含子資料夾時往下掃 MAX_DEPTH 層，讀不到的子資料夾略過並計數。 */
 private fun CoroutineScope.scan(
-    source: FileSource, dirId: String, opt: BrowseOptions, onProgress: (Int) -> Unit,
-): Listing {
+    source: FileSource, dirId: String, includeSubfolders: Boolean, onProgress: (Int) -> Unit,
+): Scan {
     val found = ArrayList<Found>()
     val dirs = ArrayList<FsEntry>()
     var skipped = 0
@@ -99,16 +108,15 @@ private fun CoroutineScope.scan(
         onProgress(++scanned)
         for (e in entries) {
             when {
-                e.isDir && !opt.includeSubfolders -> dirs += e
+                e.isDir && !includeSubfolders -> dirs += e
                 e.isDir -> if (depth < MAX_DEPTH) {
                     queue.add(Triple(e.id, if (path.isEmpty()) e.name else "$path/${e.name}", depth + 1))
                 }
-                isVideo(e) && !(opt.hideSmall && e.size in 0 until SMALL_BYTES) -> found += Found(e, id, path)
+                isVideo(e) -> found += Found(e, id, path)
             }
         }
     }
-    val dirRows = dirs.sortedBy { it.name.lowercase() }.map { ListRow.Dir(it) }
-    return Listing(dirRows + group(found, opt.sort), skipped)
+    return Scan(dirs, found, skipped)
 }
 
 private fun group(found: List<Found>, sort: BrowseSort): List<ListRow.Video> {
@@ -150,7 +158,7 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
     // 目前位置的堆疊：(顯示名稱, 資料夾 id)
     var stack by remember(source) { mutableStateOf(listOf("" to source.rootId)) }
     var opt by remember { mutableStateOf(store.loadBrowseOptions()) }
-    var listing by remember { mutableStateOf(Listing(emptyList(), 0)) }
+    var scanResult by remember { mutableStateOf(Scan(emptyList(), emptyList(), 0)) }
     var loading by remember { mutableStateOf(true) }
     var scanned by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -163,11 +171,14 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
     // 系統返回鍵／手勢：先退回上一層資料夾，到最上層才回首頁
     BackHandler(enabled = stack.size > 1) { stack = stack.dropLast(1) }
 
-    LaunchedEffect(source, dirId, reload, opt) {
+    val listing = remember(scanResult, opt.sort, opt.hideSmall) { scanResult.toListing(opt) }
+
+    // 只有「包含子資料夾」會改變要讀哪些資料夾；排序與隱藏小檔不重新掃描
+    LaunchedEffect(source, dirId, reload, opt.includeSubfolders) {
         loading = true; error = null; scanned = 0
         // 掃描中換資料夾或改選項時，舊的掃描會被取消：取消要往外丟，不能當成讀取失敗顯示
         try {
-            listing = withContext(Dispatchers.IO) { scan(source, dirId, opt) { scanned = it } }
+            scanResult = withContext(Dispatchers.IO) { scan(source, dirId, opt.includeSubfolders) { scanned = it } }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
