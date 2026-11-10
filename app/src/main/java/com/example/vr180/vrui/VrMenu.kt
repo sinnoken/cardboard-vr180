@@ -230,6 +230,7 @@ class VrMenu {
     private val cellBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(255, 48, 52, 62) }
     private val focusBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(255, 40, 98, 180) }
     private val zoneBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(255, 230, 160, 40) }
+    private val zoneHintBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(90, 230, 160, 40) }
     private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE; textSize = 52f; typeface = Typeface.DEFAULT_BOLD
     }
@@ -268,8 +269,11 @@ class VrMenu {
                     val zw = c.rect.width() * 0.22f
                     val left = RectF(c.rect.left, c.rect.top, c.rect.left + zw, c.rect.bottom)
                     val right = RectF(c.rect.right - zw, c.rect.top, c.rect.right, c.rect.bottom)
-                    if (focused && gazeCell == i && gazeZone == Zone.DEC) canvas.drawRoundRect(left, 18f, 18f, zoneBg)
-                    if (focused && gazeCell == i && gazeZone == Zone.INC) canvas.drawRoundRect(right, 18f, 18f, zoneBg)
+                    if (focused && gazeCell == i) {
+                        // 視線在中間時按鍵不會有作用：把兩側淡淡標出來，提示要看著 − 或 + 才能調整
+                        canvas.drawRoundRect(left, 18f, 18f, if (gazeZone == Zone.DEC) zoneBg else zoneHintBg)
+                        canvas.drawRoundRect(right, 18f, 18f, if (gazeZone == Zone.INC) zoneBg else zoneHintBg)
+                    }
                     canvas.drawText("−", left.centerX(), baseline, textPaint)
                     canvas.drawText("+", right.centerX(), baseline, textPaint)
                     canvas.drawText("${item.label}  ${item.value()}", c.rect.centerX(), baseline, textPaint)
