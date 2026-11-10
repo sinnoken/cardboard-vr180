@@ -1,96 +1,96 @@
-# 開發與建置
+# Development and build
 
-工具鏈、命令列建置與 CI。使用者用的安裝步驟（Android Studio、從 GitHub Actions 下載 APK、固定簽章）在
-[README 的「安裝」](../README.md#安裝)。
+Toolchain, command-line build, and CI. User installation steps (Android Studio, downloading the APK from GitHub Actions, fixed signing key) are in
+[the README's "Installation"](../README.md#installation).
 
-## 工具鏈與相依套件
+## Toolchain and dependencies
 
-版本只記在下列檔案，以它們為準：
+Versions are recorded only in these files, which are authoritative:
 
-| 項目 | 來源 |
+| Item | Source |
 |---|---|
-| Android Gradle Plugin、Kotlin（只用於 Compose 編譯器外掛）、Compose BOM、Media3、smbj 等函式庫 | `gradle/libs.versions.toml` |
-| Gradle | `gradle/wrapper/gradle-wrapper.properties` 的 `distributionUrl`；CI 用的版本寫在 `.github/workflows/build.yml` |
-| compileSdk、targetSdk、minSdk、Java／JVM target、`versionCode`／`versionName` | `app/build.gradle.kts` |
-| 權限、必要硬體（陀螺儀、OpenGL ES 3.0）、Activity 設定 | `app/src/main/AndroidManifest.xml` |
+| Android Gradle Plugin, Kotlin (used only for the Compose compiler plugin), Compose BOM, Media3, smbj, and other libraries | `gradle/libs.versions.toml` |
+| Gradle | `distributionUrl` in `gradle/wrapper/gradle-wrapper.properties`; the version CI uses is in `.github/workflows/build.yml` |
+| compileSdk, targetSdk, minSdk, Java/JVM target, `versionCode`/`versionName` | `app/build.gradle.kts` |
+| Permissions, required hardware (gyroscope, OpenGL ES 3.0), Activity settings | `app/src/main/AndroidManifest.xml` |
 
-建置設定的重點：
+Key build settings:
 
-- AGP 9 內建 Kotlin 支援，`app/build.gradle.kts` 不套用 `kotlin-android` 外掛。
-- Media3 的 `DataSource`、`MediaCodecSelector` 屬於 `@UnstableApi`，以 lint 的 `disable += "UnsafeOptInUsageError"` 放行。
-- smbj 依賴的 BouncyCastle 會帶進重複的 `META-INF` 檔案，在 `packaging.resources.excludes` 排除。
-- 沒有 Google Play 服務、分析、廣告或當機回報相依套件；新增相依套件時維持這點。
+- AGP 9 has built-in Kotlin support, so `app/build.gradle.kts` does not apply the `kotlin-android` plugin.
+- Media3's `DataSource` and `MediaCodecSelector` are `@UnstableApi`; lint allows them with `disable += "UnsafeOptInUsageError"`.
+- BouncyCastle, a dependency of smbj, brings duplicate `META-INF` files. They are excluded in `packaging.resources.excludes`.
+- No Google Play services, analytics, ads, or crash reporting dependencies. Keep it that way when adding dependencies.
 
-## 命令列建置
+## Command-line build
 
-專案沒有附 `gradlew`。第一次用命令列建置前，在本機用已安裝的 Gradle 產生 wrapper，版本取
-`gradle-wrapper.properties` 裡的那個：
+The project does not include `gradlew`. Before the first command-line build, generate the wrapper locally with an installed Gradle, using
+the version in `gradle-wrapper.properties`:
 
 ```bash
-gradle wrapper --gradle-version <gradle-wrapper.properties 的版本>
+gradle wrapper --gradle-version <version from gradle-wrapper.properties>
 ./gradlew assembleDebug
 ```
 
-APK 輸出在 `app/build/outputs/apk/debug/`。本機建置沒有傳版本號時，`versionName` 是 `0.0.0-dev`、`versionCode` 是 1。
+The APK is written to `app/build/outputs/apk/debug/`. When a local build passes no version, `versionName` is `0.0.0-dev` and `versionCode` is 1.
 
-## 單元測試
+## Unit tests
 
-`app/src/test/` 是 JVM 單元測試（JUnit 4），涵蓋不需要 Android 執行環境的純邏輯：
+`app/src/test/` holds JVM unit tests (JUnit 4). They cover pure logic that needs no Android runtime:
 
-- 播放器的計算（跳轉距離、連發格數、時間格式、角度換算、鏡片上下位置）：`player/PlayerMath.kt`。
-- 檔名的解析度標記與版本優先順序：`source/VariantNames.kt`。
-- 控制器按鍵配置與自動選擇：`input/ControllerProfile.kt`。
-- 設定檔 JSON 的來回轉換與缺欄位預設值：`model/Profiles.kt`。
+- Player calculations (seek distance, repeat steps, time format, angle conversion, lens vertical position): `player/PlayerMath.kt`.
+- Resolution tags in file names and variant priority: `source/VariantNames.kt`.
+- Controller button layouts and automatic selection: `input/ControllerProfile.kt`.
+- Round-trip JSON conversion of profiles and defaults for missing fields: `model/Profiles.kt`.
 
-android.jar 裡的 `org.json` 只是空殼，測試另外相依 `org.json:json`。命令列執行：`./gradlew testDebugUnitTest`。
-畫面、GL 與硬體相關的行為沒有自動化測試，要在實機上驗證。
+The `org.json` in android.jar is only a stub, so the tests depend on `org.json:json` separately. To run them from the command line: `./gradlew testDebugUnitTest`.
+UI, GL, and hardware behavior has no automated tests and must be verified on a device.
 
-## 版本號
+## Version numbers
 
-由 CI 從 git 算出，以 Gradle 屬性 `appVersionName`、`appVersionCode` 傳給 `app/build.gradle.kts`：
+CI computes them from git and passes them to `app/build.gradle.kts` as the Gradle properties `appVersionName` and `appVersionCode`:
 
-- 取最近的 `vX.Y.Z` tag 與之後的 commit 數 `n`（`git describe --tags --long`）。
-- `versionName`：`n = 0` 時是 `X.Y.Z`，否則是 `X.Y.Z-dev.n`。
-- `versionCode`：`(X × 10000 + Y × 100 + Z) × 100 + n`，`n` 最多算到 99。後面的版本一定比前面大，可以直接覆蓋安裝。
-- 找不到 tag 時是 `0.0.0-dev`、1。
+- Take the latest `vX.Y.Z` tag and the number of commits after it, `n` (`git describe --tags --long`).
+- `versionName`: `X.Y.Z` when `n = 0`, otherwise `X.Y.Z-dev.n`.
+- `versionCode`: `(X × 10000 + Y × 100 + Z) × 100 + n`, with `n` capped at 99. A later version is always larger, so it can be installed over an earlier one.
+- Without a tag: `0.0.0-dev` and 1.
 
-## CI（.github/workflows/build.yml）
+## CI (.github/workflows/build.yml)
 
-- 觸發：每次 push（含 tag）、pull request，以及在 Actions 頁面手動執行（`workflow_dispatch`）。
-  只改 `docs/` 或 `*.md` 的 push 與 pull request 不建置；tag 不受這條限制。
-- 去重：同一個 commit 已經有更早的一次建置成功或正在跑，就跳過整個建置（例如 fast-forward 合併到 `main`）。
-  只看更早的建置，兩個同時推的建置不會互相跳過。tag 與手動執行一律建置。
-- 步驟：安裝 JDK 21、Android SDK、指定版本的 Gradle（含快取），用 `glslangValidator` 驗證 `render/Shaders.kt`
-  裡的兩個著色器（它們在 App 執行時才編譯，Gradle 抓不到語法錯誤），算出版本號，
-  執行 `gradle testDebugUnitTest assembleDebug`，把 `app/build/outputs/apk/debug/*.apk` 上傳成 artifact `VR180Player-debug`。
-- 固定簽章：Secret `DEBUG_KEYSTORE_BASE64` 有值時，解碼成 `~/.android/debug.keystore`，讓每次建置的簽章相同；
-  金鑰的產生方式見 [README](../README.md#固定簽章選用)。
+- Triggers: every push (including tags), pull requests, and manual runs from the Actions page (`workflow_dispatch`).
+  Pushes and pull requests that change only `docs/` or `*.md` do not build. This rule does not apply to tags.
+- Dedupe: if an earlier build of the same commit has succeeded or is still running, the whole build is skipped (for example, a fast-forward merge into `main`).
+  Only earlier builds count, so two builds pushed at the same time do not skip each other. Tags and manual runs always build.
+- Steps: install JDK 21, the Android SDK, and the pinned Gradle version (with cache); validate the two shaders in `render/Shaders.kt`
+  with `glslangValidator` (they compile only at app runtime, so Gradle cannot catch syntax errors); compute the version number;
+  run `gradle testDebugUnitTest assembleDebug`; upload `app/build/outputs/apk/debug/*.apk` as the artifact `VR180Player-debug`.
+- Fixed signing key: when the secret `DEBUG_KEYSTORE_BASE64` is set, it is decoded to `~/.android/debug.keystore`, so every build has the same signature.
+  For how to generate the key, see [README](../README.md#fixed-signing-key-optional).
 
-## 發布
+## Releases
 
-推 `vX.Y.Z` tag 時，CI 在編譯完成後把 APK 改名成 `VR180Player-X.Y.Z-debug.apk`，附到同名的 GitHub Release
-（已經有就覆蓋同名檔案，沒有就建立一個預先發行版）。沒有設定 `DEBUG_KEYSTORE_BASE64` 時這一步會失敗，
-因為簽章不同的 APK 不能覆蓋安裝舊版。
+When a `vX.Y.Z` tag is pushed, CI renames the APK to `VR180Player-X.Y.Z-debug.apk` after the build and attaches it to the GitHub Release of the same name
+(overwriting a file of the same name if the Release exists, or creating a pre-release if not). Without `DEBUG_KEYSTORE_BASE64` this step fails,
+because an APK with a different signature cannot be installed over the old version.
 
-要附上自己寫的說明時，先建立 Release 再讓它產生 tag：
+To attach your own notes, create the Release first and let it create the tag:
 
 ```bash
-gh release create vX.Y.Z --target <commit> --prerelease --title "vX.Y.Z（除錯版）：…" --notes-file notes.md
+gh release create vX.Y.Z --target <commit> --prerelease --title "vX.Y.Z (debug): …" --notes-file notes.md
 ```
 
-tag 一建立就會觸發 CI，APK 會自動附上去。
+Creating the tag triggers CI, and the APK is attached automatically.
 
-要發行的改動不必先推分支等 CI：直接在要發的 commit 建立 Release，tag 那次建置同時驗證（測試、著色器）
-與產出 APK；通過後再 fast-forward 合併到 `main`，`main` 那次會被去重跳過。一次發行只建置一次。
-建置失敗時 Release 沒有 APK，修正後用新的 commit 與新的版本號重發。
+Changes to release do not need a branch push and CI run first. Create the Release directly on the commit to release. The tag build both verifies (tests, shaders)
+and produces the APK. After it passes, fast-forward merge into `main`; the `main` build is skipped by dedupe. Each release builds only once.
+If the build fails, the Release has no APK. Fix it and release again with a new commit and a new version number.
 
-## 測試工具
+## Test tools
 
-`tools/make_test_video.sh [輸出檔名]` 用 ffmpeg 產生 VR180 等距投影左右並排測試片：
+`tools/make_test_video.sh [output file name]` uses ffmpeg to generate an equirectangular side-by-side VR180 test video:
 
-- 每眼 1920×1920（180°×180°），總共 3840×1920、30 fps、10 秒，H.264（High profile、level 5.1）、無音訊。
-- 左眼藍底、右眼紅底，每 30° 一條格線，黃色十字線是正前方，標示 `LEFT 60`、`RIGHT 60`、`UP 60`、`DOWN 60`
-  與經過秒數。
-- 需要 ffmpeg 與 DejaVu 字型（腳本寫死 `/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf`）。
+- 1920×1920 per eye (180°×180°), 3840×1920 in total, 30 fps, 10 seconds, H.264 (High profile, level 5.1), no audio.
+- Blue background for the left eye, red for the right, a grid line every 30°, a yellow crosshair marking straight ahead, labels `LEFT 60`, `RIGHT 60`, `UP 60`, `DOWN 60`,
+  and elapsed seconds.
+- Requires ffmpeg and the DejaVu font (the script hardcodes `/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf`).
 
-使用者怎麼用這支測試片見 [README 的「測試影片」](../README.md#測試影片)。
+For how users use this test video, see [the README's "Test video"](../README.md#test-video).

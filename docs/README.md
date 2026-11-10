@@ -1,13 +1,14 @@
-# 文件索引
+# Documentation index
 
-每種規格只寫在一份文件，其他地方用連結指過去。新增文件時一併更新這張表。
+Each spec lives in exactly one document; other places link to it. Update this table when you add a document.
 
-| 文件 | 負責的規格 |
+| Document | Specs it owns |
 |---|---|
-| [../README.md](../README.md) | 使用者文件：安裝（GitHub Actions 下載、固定簽章、Android Studio）、網路與權限、第一次使用與各項校正的步驟、**按鍵對應**（「操作」一節，`ControllerProfile.kt` 的註解指向這裡）、影片來源、影片清單選項、**檔案慣例**（副檔名、解析度標記、場景校正檔檔名）、轉檔指令、測試影片用法、已知限制 |
-| [architecture.md](architecture.md) | 元件與職責、執行緒模型、播放資料流（Intent extras、緩衝、版本選擇與降版）、頭部追蹤、渲染流程（鏡片中心、畸變公式、場景旋轉、測試圖樣、選單面板）、輸入處理（連發、單手扳機去重、動作分派、焦點規則） |
-| [data-formats.md](data-formats.md) | App 私有目錄裡每個 JSON 檔（`device.json`、`lenses.json`、`connection.json`、`folders.json`、`controller.json`、`browse.json`、`positions.json`、`scenes/`）與影片旁 `*.vr180.json` 的欄位、型別、預設值、缺檔與缺欄位時的行為、讀寫時機；鏡片預設檔數值 |
-| [development.md](development.md) | 工具鏈與相依套件版本的來源檔、建置設定重點、命令列建置、單元測試範圍、版本號規則、CI 流程、發布流程、`tools/make_test_video.sh` 的輸出規格 |
+| [../README.md](../README.md) | User documentation: installation (GitHub Actions download, fixed signing key, Android Studio), network and permissions, first-time setup and steps for each calibration, **button mapping** (the "Controls" section; comments in `ControllerProfile.kt` point here), video sources, video list options, **file conventions** (extensions, resolution tags, scene calibration file name), conversion commands, test video usage, known limitations |
+| [../README.zh-TW.md](../README.zh-TW.md) | Traditional Chinese version of the README. Same content as `README.md`; owns no specs of its own. Update it together with `README.md` |
+| [architecture.md](architecture.md) | Components and responsibilities, threading model, playback data flow (Intent extras, buffering, variant selection and downgrade), head tracking, rendering pipeline (lens centers, distortion formula, scene rotation, test patterns, menu panel), input handling (key repeat, one-hand trigger dedupe, action dispatch, focus rules) |
+| [data-formats.md](data-formats.md) | Fields, types, defaults, behavior on missing files and fields, and read/write timing of every JSON file in the app's private directory (`device.json`, `lenses.json`, `connection.json`, `folders.json`, `controller.json`, `browse.json`, `positions.json`, `scenes/`) and of the `*.vr180.json` next to videos; lens preset values |
+| [development.md](development.md) | Source files for toolchain and dependency versions, key build settings, command-line build, unit test scope, versioning rules, CI pipeline, release process, output spec of `tools/make_test_video.sh` |
 
-版本號（AGP、Gradle、SDK、函式庫）不抄進文件，以 `gradle/libs.versions.toml`、`gradle/wrapper/gradle-wrapper.properties`、
-`app/build.gradle.kts` 為準。
+Version numbers (AGP, Gradle, SDK, libraries) are not copied into the docs. `gradle/libs.versions.toml`, `gradle/wrapper/gradle-wrapper.properties`,
+and `app/build.gradle.kts` are authoritative.

@@ -1,216 +1,220 @@
-# VR180 Player（Android 原生版）
+[繁體中文](README.zh-TW.md)
 
-從 NAS（SMB）或手機本機資料夾播放 8K VR180 左右並排影片，戴 Cardboard 類眼鏡觀看。
-只用硬體解碼、App 內完成陀螺儀、鏡片、場景三種校正，支援藍芽控制器。
+# VR180 Player (native Android)
 
-需要 Android 12 以上、有陀螺儀與 OpenGL ES 3.0 的手機。能播多高的解析度取決於手機的硬體解碼器。
+Plays 8K VR180 side-by-side videos from a NAS (SMB) or a local folder on the phone, viewed through a Cardboard-style viewer.
+Hardware decoding only. Gyro, lens, and scene calibration are all done in the app. Bluetooth controllers are supported.
 
-開發者文件（架構、資料格式、建置細節）見 [docs/](docs/README.md)。
+Requires Android 12 or later, a gyroscope, and OpenGL ES 3.0. The maximum playable resolution depends on the phone's hardware decoder.
 
-## 安裝
+Developer documentation (architecture, data formats, build details) is in [docs/](docs/README.md).
 
-### 在 GitHub 上編譯（不用裝 Android Studio）
+## Installation
 
-專案已附 `.github/workflows/build.yml`，推上 GitHub 後會自動在雲端編譯。
+### Build on GitHub (no Android Studio needed)
 
-1. 在 GitHub 建立一個新的儲存庫（建議設為私人），把整個資料夾推上去。
-2. 打開儲存庫的 **Actions** 分頁，會看到「Build APK」正在執行（約 5–10 分鐘）。
-3. 完成後點進該次執行，在頁面下方 **Artifacts** 下載 `VR180Player-debug`（是個 zip，裡面是 APK）。
-4. 把 APK 傳到手機安裝（需允許「安裝不明來源的應用程式」）。
+The project includes `.github/workflows/build.yml`. After you push to GitHub, it builds automatically in the cloud.
 
-編譯失敗時，點開失敗的步驟就能看到錯誤訊息。
+1. Create a new repository on GitHub (private recommended) and push the whole folder.
+2. Open the repository's **Actions** tab. "Build APK" is running (about 5–10 minutes).
+3. When it finishes, open that run and download `VR180Player-debug` under **Artifacts** at the bottom of the page (a zip that contains the APK).
+4. Copy the APK to the phone and install it (allow "Install unknown apps").
 
-### 固定簽章（選用）
+If the build fails, open the failed step to see the error message.
 
-雲端每次編譯都會產生新的除錯金鑰，新版無法直接覆蓋安裝舊版。
-想直接覆蓋安裝的話，在自己電腦產生一次金鑰並存進 GitHub Secrets：
+### Fixed signing key (optional)
+
+Each cloud build generates a new debug key, so a new version cannot be installed over an old one.
+To install over the old version, generate a key once on your computer and store it in GitHub Secrets:
 
 ```bash
 keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey \
   -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-base64 -w0 debug.keystore   # 把輸出內容複製起來
+base64 -w0 debug.keystore   # copy the output
 ```
 
-到儲存庫 **Settings → Secrets and variables → Actions** 新增 `DEBUG_KEYSTORE_BASE64`，貼上剛才的內容。
+In the repository, go to **Settings → Secrets and variables → Actions**, add `DEBUG_KEYSTORE_BASE64`, and paste the output.
 
-### 用 Android Studio 建置
+### Build with Android Studio
 
-1. 用最新版 Android Studio 開啟此資料夾（需支援專案使用的 AGP 版本，見 `gradle/libs.versions.toml`）。
-2. 專案沒有附 `gradlew` 執行檔；Android Studio 會依 `gradle/wrapper/gradle-wrapper.properties` 自動處理。
-   命令列建置見 [docs/development.md](docs/development.md#命令列建置)。
-3. 接上手機執行。
+1. Open this folder with the latest Android Studio (it must support the AGP version the project uses; see `gradle/libs.versions.toml`).
+2. The project does not include a `gradlew` executable. Android Studio handles it from `gradle/wrapper/gradle-wrapper.properties`.
+   For command-line builds, see [docs/development.md](docs/development.md#command-line-build).
+3. Connect the phone and run.
 
-## 網路與權限
+## Network and permissions
 
-App 不依賴任何網際網路服務：沒有 Google Play 服務、分析、廣告或當機回報元件。
-網路只用在以 SMB 連到你設定的 NAS。Android 17 起，第一次連線時會詢問「附近裝置／區域網路」權限，
-允許後才能存取區網內的 NAS；拒絕後可到系統設定 › 應用程式 › VR180 Player › 權限 開啟。
+The app depends on no internet services: no Google Play services, analytics, ads, or crash reporting.
+The network is used only to reach your NAS over SMB. From Android 17, the first connection asks for the "Nearby devices / Local network" permission.
+The app can reach a NAS on the LAN only after you allow it. If you deny it, enable it in system Settings › Apps › VR180 Player › Permissions.
 
-本機資料夾只存取你選定的資料夾，不需要儲存權限；藍芽控制器不需要藍芽權限。
+Local folders give access only to the folders you pick. No storage permission is needed. Bluetooth controllers need no Bluetooth permission.
 
-## 第一次使用的順序
+## First-time setup
 
-設定都可以跳過，直接選影片播放即可。播放時先戴好眼鏡、看向正前方，按任意鍵或點螢幕才會開始
-（這時按返回鍵會離開播放）。
+All setup steps are optional. You can pick a video and play it right away. On playback, put on the viewer, look straight ahead, and press any button or tap the screen to start
+(pressing Back at this point exits playback).
 
-1. **螢幕尺寸校正（選用）**：把信用卡直放貼在螢幕框上，調到四邊貼齊。未校正時使用手機回報的螢幕密度。
-2. **陀螺儀檢測（選用）**：手機平放 15 秒不要碰，量出水平漂移速率，播放時自動抵銷。
-   同頁可調「延遲預測」：轉頭時畫面拖在後面就調高，停下時衝過頭就調低。
-3. **眼鏡設定檔（可跳過）**：預設直接使用 Cardboard 預設值（與 Cardboard SDK 未掃描時相同）。
-   預設檔不會被修改：從預設檔出發在 VR 裡校正後儲存，會另存成新的「我的眼鏡（以 … 為基礎）」設定檔並啟用；
-   之後再校正會直接更新這個設定檔。調壞了隨時可以在首頁改回預設值。
-4. 播放任一影片，打開選單 › **設定…** › **鏡片校正**（戴著眼鏡做）：
-   - 對中心（進入校正時的第一張圖）：手機不一定放在眼鏡正中間，所以改移動畫面、不用移動手機。
-     一次閉一隻眼，調「左右位置」「上下位置」讓同心圓的圓心落在鏡片正中央、黃色外框四邊被鏡片邊緣切掉一樣多。
-     若一眼的圓心偏高、另一眼偏低，是手機在眼鏡裡歪了，調「傾斜」。
-   - 眼距對準圖：調「鏡片間距」到十字上下兩段接成直線、左右兩段對齊。
-   - 方格牆：看正前方調 k1 讓線條變直，看邊緣調 k2；最後左右轉頭，方格要像釘在牆上，
-     若跟著頭跑或反向滑動，調「螢幕到鏡片」。
-   - 調亂了可以按「Cardboard 預設值」一鍵回到起點（按「儲存」才會寫入）。
-5. 只有某支影片拍歪時，才需要 **設定… › 這支影片的校正**：
-   「設定正前方」看著主角點一下，就同時設好水平方向與仰俯；地平線歪了調「地平線」。
-   雙眼垂直差、匯聚、左右眼對調在「進階」。一定先完成鏡片校正，再做這一步。
+1. **Screen size calibration (optional)**: Hold a credit card upright against the screen and adjust until all four edges line up. Without calibration, the screen density reported by the phone is used.
+2. **Gyro check (optional)**: Lay the phone flat and leave it untouched for 15 seconds. This measures the yaw drift rate, which is cancelled out during playback.
+   The same page has "Motion prediction": raise it if the image lags behind when you turn your head; lower it if the image overshoots when you stop.
+3. **Viewer profiles (can be skipped)**: By default, Cardboard defaults are used (the same as Cardboard SDK without a scanned viewer).
+   Presets are never modified: if you start from a preset, calibrate in VR, and save, the result is saved as a new "My viewer (based on …)" profile and activated.
+   Later calibrations update this profile directly. If you mess it up, switch back to the defaults on the home screen at any time.
+4. Play any video, open the menu › **Settings…** › **Lens calibration** (do this wearing the viewer):
+   - Centering (the first pattern when calibration opens): The phone is not always centered in the viewer, so you move the image instead of the phone.
+     Close one eye at a time. Adjust "Horizontal offset" and "Vertical position" so the center of the concentric circles sits in the middle of the lens, and the lens edge cuts off the same amount of the yellow frame on all four sides.
+     If the center is high in one eye and low in the other, the phone is tilted in the viewer. Adjust "Tilt".
+   - IPD alignment: Adjust "Lens separation" until the upper and lower halves of the cross form one straight line and the left and right halves line up.
+   - Grid wall: Look straight ahead and adjust k1 until the lines are straight. Look at the edges and adjust k2. Finally, turn your head left and right. The grid should look pinned to a wall.
+     If it follows your head or slides the opposite way, adjust "Screen to lens".
+   - If you get lost, press "Cardboard defaults" to return to the starting point (nothing is written until you press "Save").
+5. Only when a specific video was shot crooked do you need **Settings… › Video calibration**:
+   Look at the subject and select "Set forward" to set both yaw and pitch at once. If the horizon is tilted, adjust "Horizon".
+   "Eye vertical offset", "Convergence", and eye swap ("Eyes") are under "Advanced…". Always finish lens calibration before this step.
 
-## 操作
+## Controls
 
-選單是固定在空間中的面板。校正頁的面板放在視線下方，正中央的測試圖樣不會被擋住。
+The app UI follows the phone's system language: Traditional Chinese when the system language is Chinese, English otherwise.
 
-按鍵有兩組配置，在首頁「控制器按鍵測試」切換。預設「自動」：名稱含 MOCUTE 的控制器用單手配置，其他用標準配置。
-其他單手控制器沒被自動認出時（按扳機在測試頁同時出現 A 與 R2），手動選「單手控制器」。
-按鍵測試頁會即時顯示控制器送出的每個訊號與 App 會把它當成什麼動作；這頁會攔下所有按鍵，要離開請按左上角的「返回」。
+The menu is a panel fixed in space. On calibration pages the panel sits below your line of sight, so it does not cover the test pattern in the center.
 
-**標準手把**（雙手手把、遙控器、鍵盤）
+There are two button layouts. Switch them on the home screen under "Controller test". The default is "Auto": controllers whose name contains MOCUTE use the one-hand layout; all others use the standard layout.
+If another one-hand controller is not detected automatically (pressing the trigger shows both A and R2 on the test page), select "One-hand controller" manually.
+The controller test page shows every signal the controller sends and the action the app maps it to, in real time. This page captures all buttons; to leave, press "Back" at the top left.
 
-| 按鍵 | 動作 |
+**Standard gamepad** (two-hand gamepads, remotes, keyboards)
+
+| Button | Action |
 |---|---|
-| D-pad / 左搖桿 / 方向鍵 | 選單開著：移動焦點，數值項目左右鍵直接調整（按住加速）。選單關著：左右＝倒退 / 快轉，上下＝上一支 / 下一支影片 |
-| A / Enter / D-pad 中鍵 | 選取 |
-| B / Esc / 系統返回 | 返回 |
-| Start / Y / Menu | 開關選單 |
-| X / Select / 左搖桿按下 | 重新置中 |
-| L1 / R1、上一首 / 下一首、倒轉 / 快轉鍵 | 倒退 / 快轉 10 秒 |
-| 播放暫停鍵 / 播放鍵 / 暫停鍵 / 空白鍵 / R2 | 播放 / 暫停 |
+| D-pad / left stick / arrow keys | Menu open: move focus; on value items, left/right adjusts the value directly (hold to accelerate). Menu closed: left/right = rewind / fast-forward, up/down = previous / next video |
+| A / Enter / D-pad center | Select |
+| B / Esc / system Back | Back |
+| Start / Y / Menu | Open/close menu |
+| X / Select / left stick press | Recenter |
+| L1 / R1, previous / next track, rewind / fast-forward keys | Rewind / fast-forward 10 seconds |
+| Play/pause key / play key / pause key / Space / R2 | Play / pause |
 
-**單手控制器**（例如 MOCUTE-052：第一列 B、SELECT，下方菱形 12 點 X、3 點 Y、6 點 R1、9 點 START，背面扳機）
+**One-hand controller** (for example, MOCUTE-052: top row B, SELECT; diamond below with X at 12 o'clock, Y at 3, R1 at 6, START at 9; trigger on the back)
 
-| 按鍵 | 動作 |
+| Button | Action |
 |---|---|
-| 搖桿 | 同標準手把的方向鍵：選單關著時左右＝倒退 / 快轉，上下＝上一支 / 下一支影片 |
-| 扳機、R1（6 點） | 選單開著＝選取，關著＝播放 / 暫停 |
-| X（12 點） | 開關選單 |
-| START（9 點）/ Y（3 點） | 音量－ / 音量＋ |
-| B | 返回 |
-| SELECT | 重新置中 |
+| Joystick | Same as the standard gamepad's arrow keys: with the menu closed, left/right = rewind / fast-forward, up/down = previous / next video |
+| Trigger, R1 (6 o'clock) | Menu open = select; menu closed = play / pause |
+| X (12 o'clock) | Open/close menu |
+| START (9 o'clock) / Y (3 o'clock) | Volume − / Volume + |
+| B | Back |
+| SELECT | Recenter |
 
-音量鍵交給系統調音量；用按鍵調音量時，目前音量顯示在選單的狀態列（VR 裡看不到系統的音量面板）。
+The volume keys are passed to the system. When you change the volume with controller buttons, the current volume appears in the menu's status line (the system volume panel is not visible in VR).
 
-**置中方式**（播放選單「設定…」裡切換，會記住）
+**Recenter mode** (switch it in the player menu under "Settings…"; it is remembered)
 
-- 只轉水平（預設）：坐著、站著看。重新置中只重設左右方向，地平線一直跟真實世界對齊。
-- 全方向：躺著、側躺看。重新置中時連上下、歪斜一起重設，影片端正地出現在眼前；換姿勢後要再置中一次。
+- Horizontal only (default): for watching seated or standing. Recenter resets only the left/right direction. The horizon always stays aligned with the real world.
+- Full orientation: for watching lying down or on your side. Recenter also resets up/down and tilt, so the video appears upright in front of you. Recenter again after changing posture.
 
-**選單關著時**
+**With the menu closed**
 
-- 倒退 / 快轉：按一下跳 10 秒；按住約每 0.4 秒跳一次，每按住 1 秒跳得更遠（10 秒 → 30 秒 → 1 分 → 2 分 → 5 分）。
-  為了反應快，跳轉會落在最近的關鍵幀，位置可能前後差一兩秒。
-- 上一支 / 下一支：照影片清單畫面上的順序（含排序與篩選）；按住不會連續切換。
-  App 在背景被系統關掉後再回到播放器，清單就沒了，只能播目前這支。
+- Rewind / fast-forward: a press jumps 10 seconds. Holding jumps about every 0.4 seconds, and each second held jumps farther (10 s → 30 s → 1 min → 2 min → 5 min).
+  For responsiveness, jumps land on the nearest keyframe, so the position may be off by a second or two.
+- Previous / next: follows the order on the video list screen (including sort and filters). Holding does not switch repeatedly.
+  If the system kills the app in the background and you return to the player, the list is gone and only the current video can play.
 
-**進度列**（主選單播放鍵下面一列）
+**Seek bar** (the row below the play button in the main menu)
 
-- 焦點在進度列時，左右鍵每次跳 10 秒，按住越跳越遠（同選單關著時）。
-- 看著進度列上的位置（會出現一條黃線）按確認，直接跳到那裡。
+- With focus on the seek bar, each left/right press jumps 10 seconds. Holding jumps farther and farther (same as with the menu closed).
+- Look at a position on the seek bar (a yellow line appears) and press confirm to jump there.
 
-**播放狀態**
+**Playback state**
 
-- 播放鍵會依狀態變成「播放」「暫停」「重播」（播完時）或「重試」（出錯時）。
-- 播完或出錯時，選單會自動打開，錯誤原因顯示在面板上。
-- 續播：每支影片記住上次看到的位置（同一支影片的各解析度版本共用），開啟或切換過去時自動接著播，
-  狀態列顯示「從 12:34 繼續」。看不到 5 秒不記；看到最後 30 秒當作看完，下次從頭。想從頭看就用進度列跳到最左邊。
+- The play button changes with the state: "Play", "Pause", "Replay" (at the end), or "Retry" (on error).
+- At the end or on error, the menu opens automatically and shows the cause of the error on the panel.
+- Resume: each video remembers where you left off (shared by all resolution variants of the same video). Opening it or switching to it resumes from there,
+  and the status line shows "Resuming at 12:34". Positions under 5 seconds are not saved. Reaching the last 30 seconds counts as finished, and the next play starts from the beginning. To start over, jump to the far left of the seek bar.
 
-**校正頁**
+**Calibration pages**
 
-- B 或「取消」放棄這次修改；「儲存」才會寫入。
-- 開關選單鍵只收起面板、保留修改，方便看清楚測試圖樣；再按選單、確認或返回會回到同一頁。
-- 鏡片校正時，倒退 / 快轉鍵切換上一個 / 下一個測試圖樣（面板收起時也可以）；面板收起時，方向鍵左右也會切換圖樣。
+- B or "Cancel" discards the changes. Only "Save" writes them.
+- The menu button only hides the panel and keeps the changes, so you can see the test pattern clearly. Pressing menu, confirm, or Back again returns to the same page.
+- During lens calibration, the rewind / fast-forward buttons switch to the previous / next test pattern (also while the panel is hidden). While the panel is hidden, left/right on the D-pad also switches patterns.
 
-藍芽手把、D-pad 遙控器、多媒體遙控器、鍵盤都可以，先在系統設定配對即可，App 不需要藍芽權限。
+Bluetooth gamepads, D-pad remotes, media remotes, and keyboards all work. Pair them in system settings first. The app needs no Bluetooth permission.
 
-**沒有控制器時**（Cardboard 按鈕 = 觸碰螢幕）
+**Without a controller** (Cardboard button = screen tap)
 
-- 選單關著時點一下打開主選單。
-- 看著選單項目點一下選取；數值項目看著 − 或 + 再點。
-- 主選單開著時看別處點一下關閉選單；校正頁看別處點一下不會有動作，避免誤觸。
-- 長按畫面重新置中。
+- With the menu closed, tap once to open the main menu.
+- Look at a menu item and tap to select it. For value items, look at − or + and tap.
+- With the main menu open, look elsewhere and tap to close it. On calibration pages, tapping while looking elsewhere does nothing, to prevent accidental input.
+- Long-press the screen to recenter.
 
-## 影片來源
+## Video sources
 
-### NAS（SMB）
+### NAS (SMB)
 
-在首頁填主機（IP 或名稱）、共用資料夾、帳號、密碼，按「連線並瀏覽」。帳號空白時以訪客登入。
-連線資訊在按下連線時就會記住，連線失敗也不用重打。
+On the home screen, enter the host (IP or name), share, user name, and password, then press "Connect and browse". A blank user name logs in as guest.
+The connection details are saved as soon as you press connect, so you do not need to retype them if the connection fails.
 
-### 本機資料夾
+### Local folders
 
-主畫面的「新增本機資料夾」會開啟系統的資料夾選擇器。手機儲存空間、SD 卡、USB 隨身碟都可以，
-授權一次後 App 會記住。App 只能存取選定的資料夾，不需要儲存權限，播放時也不用網路。
-資料夾失去存取權限時，移除後重新加入即可。
+"Add local folder" on the home screen opens the system folder picker. Phone storage, SD cards, and USB drives all work.
+After you grant access once, the app remembers it. The app can access only the selected folders, needs no storage permission, and needs no network for playback.
+If a folder loses its access permission, remove it and add it again.
 
-本機播放也很適合用來排查問題：同一支片在本機順、從 NAS 卡，代表瓶頸在網路傳輸；
-兩邊都卡，代表是解碼或過熱。
+Local playback is also useful for troubleshooting: if a video plays smoothly from local storage but stutters from the NAS, the bottleneck is network transfer.
+If it stutters in both, the cause is decoding or overheating.
 
-## 影片清單
+## Video list
 
-- 排序：名稱、日期、大小。再點一次已選的排序就切換升降（↑ / ↓）；換排序時，名稱預設 A→Z，日期、大小預設新的、大的在前。
-- 包含子資料夾：把往下 3 層內的影片一起列出，每支影片標出所在資料夾；讀不到的子資料夾會略過並提示。
-  開啟時清單不顯示資料夾，只列影片。
-- 隱藏小於 100 MB（預設開啟）：濾掉預覽、片段等小檔。來源沒有提供大小的檔案不會被隱藏。
-- 這三個選項會記住，NAS 與本機資料夾共用。
-- 系統返回鍵會先回到上一層資料夾，到最上層才回首頁。
+- Sort: name, date, size. Tap the selected sort again to toggle ascending/descending (↑ / ↓). When you change the sort, name defaults to A→Z, and date and size default to newest and largest first.
+- Include subfolders: lists videos up to 3 levels down, each labeled with its folder. Unreadable subfolders are skipped with a notice.
+  When enabled, the list shows no folders, only videos.
+- Hide under 100 MB (on by default): filters out small files such as previews and clips. Files whose size the source does not report are not hidden.
+- These three options are remembered and shared by NAS and local folders.
+- The system Back key first goes up one folder level; at the top level it returns to the home screen.
 
-## 檔案慣例
+## File conventions
 
-NAS 與本機資料夾相同。
+Same for NAS and local folders.
 
-- 格式：等距投影（equirectangular）左右並排 VR180，左半張給左眼。相機直出的魚眼格式需先轉檔。
-- 副檔名：`mp4`、`mkv`、`mov`、`m4v`、`ts`、`webm`（不分大小寫）。名稱以 `.` 開頭的檔案與資料夾不會列出。
-- 多解析度版本：檔名結尾加標記，會自動歸成同一支影片，播放時挑手機能硬解的最高版本：
-  `trip_8K.mp4`、`trip_5.7K.mp4`、`trip_4K.mp4`（支援 8K / 6K / 5.7K / 4K）。
-  - 標記前面用 `_`、`-`、`.` 或空白隔開，大小寫都可以。
-  - 只在同一個資料夾內歸組。沒有標記的同名檔（例如 `trip.mp4`）也歸進來，標成「原檔」，排在最前面（通常是畫質最高的母片；解不了會自動改播有標記的版本）。
-  - 能不能硬解是看解碼器宣告的能力；宣告常比實際保守，所以最低（或唯一）的版本即使超出宣告也會嘗試播放，
-    真的解不了才顯示錯誤。
-- 場景校正存在影片旁的 `trip.vr180.json`（所有版本共用、換手機也帶得走），手機上也會留一份。
-  播放時優先讀影片旁的檔案；資料夾唯讀時只存在手機。格式見 [docs/data-formats.md](docs/data-formats.md#場景校正檔)。
+- Format: equirectangular side-by-side VR180, with the left half for the left eye. Fisheye output straight from the camera must be converted first.
+- Extensions: `mp4`, `mkv`, `mov`, `m4v`, `ts`, `webm` (case-insensitive). Files and folders whose names start with `.` are not listed.
+- Multiple resolution variants: add a tag at the end of the file name. They are grouped into one video automatically, and playback picks the highest variant the phone can hardware-decode:
+  `trip_8K.mp4`, `trip_5.7K.mp4`, `trip_4K.mp4` (8K / 6K / 5.7K / 4K supported).
+  - Separate the tag with `_`, `-`, `.`, or a space. Any case works.
+  - Grouping happens only within the same folder. A file with the same name and no tag (for example, `trip.mp4`) is also included, labeled "Original", and listed first (usually the highest-quality master; if it cannot be decoded, a tagged variant plays instead).
+  - Whether a variant can be hardware-decoded is based on the capabilities the decoder declares. These are often more conservative than reality, so the lowest (or only) variant is tried even if it exceeds them.
+    An error is shown only if it really cannot be decoded.
+- Scene calibration is stored next to the video in `trip.vr180.json` (shared by all variants and portable across phones). A copy is also kept on the phone.
+  Playback reads the file next to the video first. If the folder is read-only, it is saved only on the phone. For the format, see [docs/data-formats.md](docs/data-formats.md#scene-calibration-file).
 
-### 轉出 5.7K 手機版（ffmpeg）
+### Make a 5.7K phone version (ffmpeg)
 
-手機在 Cardboard 上的實際解析度大約落在 5.7K 左右，8K 多出的細節幾乎看不到，卻最容易超出硬解能力。
+The effective resolution of a phone in Cardboard is around 5.7K. The extra detail in 8K is barely visible, yet 8K is the most likely to exceed hardware decoding limits.
 
 ```bash
-# CPU（品質最好）
+# CPU (best quality)
 ffmpeg -i trip_8K.mp4 -vf scale=5760:2880:flags=lanczos \
   -c:v libx265 -crf 20 -preset slow -pix_fmt yuv420p10le -tag:v hvc1 \
   -c:a copy trip_5.7K.mp4
 
-# NVIDIA 顯示卡（快很多）
+# NVIDIA GPU (much faster)
 ffmpeg -hwaccel cuda -i trip_8K.mp4 -vf scale=5760:2880:flags=lanczos \
   -c:v hevc_nvenc -preset p5 -cq 22 -pix_fmt p010le -tag:v hvc1 \
   -c:a copy trip_5.7K.mp4
 ```
 
-## 測試影片
+## Test video
 
-`tools/make_test_video.sh` 會產生一支 10 秒的 4K 測試片（左眼藍底、右眼紅底，黃線是正前方，
-標示上下左右 60°），用來確認左右眼沒接反、方向正確、轉頭時畫面固定。需要 ffmpeg，細節見
-[docs/development.md](docs/development.md#測試工具)。
-現成的檔案附在 GitHub Releases（`vr180_test_4K.mp4`）。
-測試片小於 100 MB，影片清單預設會隱藏，要先關掉「隱藏小於 100 MB」才看得到。
+`tools/make_test_video.sh` generates a 10-second 4K test video (blue background for the left eye, red for the right, a yellow line marking straight ahead,
+and labels at 60° up, down, left, and right). Use it to check that the eyes are not swapped, the orientation is correct, and the image stays fixed when you turn your head. It requires ffmpeg. For details, see
+[docs/development.md](docs/development.md#test-tools).
+A ready-made file is attached to GitHub Releases (`vr180_test_4K.mp4`).
+The test video is under 100 MB, so the video list hides it by default. Turn off "Hide under 100 MB" to see it.
 
-## 已知限制
+## Known limitations
 
-- SMB 密碼以明文存在 App 私有目錄（其他 App 讀不到，但已 root 的手機可以）。
-- SMB 不能設定網域（domain）。
-- 只支援左右並排；上下並排或魚眼需另外加。
-- UI 面板與準星在兩眼位置相同（位於無限遠），近距離內容上可能有深度衝突。
-- 頭部只有旋轉追蹤（3DoF），不支援前後移動。
+- The SMB password is stored in plain text in the app's private directory (other apps cannot read it, but a rooted phone can).
+- The SMB domain cannot be set.
+- Only side-by-side is supported. Top-bottom or fisheye would need to be added.
+- The UI panel and the reticle are at the same position in both eyes (at infinity), so they may conflict in depth with nearby content.
+- Head tracking is rotation only (3DoF). Moving forward or backward is not supported.
