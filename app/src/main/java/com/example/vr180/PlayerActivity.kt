@@ -38,6 +38,11 @@ import com.example.vr180.model.SceneCalib
 import com.example.vr180.model.VerticalAlignment
 import com.example.vr180.player.HardwareOnly
 import com.example.vr180.player.Playlist
+import com.example.vr180.player.fmtTime
+import com.example.vr180.player.moveLensVertical
+import com.example.vr180.player.seekStepMs
+import com.example.vr180.player.stepsFor
+import com.example.vr180.player.wrap180
 import com.example.vr180.render.M3
 import com.example.vr180.render.VrRenderer
 import com.example.vr180.smb.LocalNetworkPermission
@@ -343,22 +348,6 @@ class PlayerActivity : ComponentActivity() {
 
     /** GL 執行緒：進度列這次左右要跳多遠（依按住時間，見 seekStepMs）。 */
     private var seekBarStepMs = 10_000L
-
-    /** 按住時間 → 每次跳多遠：10 秒、30 秒、1 分、2 分。 */
-    private fun seekStepMs(heldMs: Long): Long = when {
-        heldMs < 2_000 -> 10_000L
-        heldMs < 4_000 -> 30_000L
-        heldMs < 6_000 -> 60_000L
-        else -> 120_000L
-    }
-
-    /** 按住時間 → 每次連發要走幾格。 */
-    private fun stepsFor(heldMs: Long): Int = when {
-        heldMs < 1_000 -> 1
-        heldMs < 2_000 -> 3
-        heldMs < 3_000 -> 6
-        else -> 12
-    }
 
     private fun VrAction.toNav(): NavAction? = when (this) {
         VrAction.UP -> NavAction.UP
@@ -961,26 +950,6 @@ class PlayerActivity : ComponentActivity() {
 
     private fun rad(deg: Float) = Math.toRadians(deg.toDouble()).toFloat()
     private fun deg(rad: Float) = Math.toDegrees(rad.toDouble()).toFloat()
-
-    private fun fmtTime(ms: Long): String {
-        val t = ms / 1000
-        val h = t / 3600; val m = (t % 3600) / 60; val sec = t % 60
-        return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
-    }
-
-    /** 畫面往上（up > 0）或往下移動 |up| mm，依基準換算成 lensHeightMm。 */
-    private fun moveLensVertical(l: LensProfile, up: Float): LensProfile = when (l.alignment) {
-        VerticalAlignment.BOTTOM -> l.copy(lensHeightMm = (l.lensHeightMm + up).coerceAtLeast(0f))
-        VerticalAlignment.TOP -> l.copy(lensHeightMm = (l.lensHeightMm - up).coerceAtLeast(0f))
-        VerticalAlignment.CENTER -> l.copy(lensHeightMm = (l.lensHeightMm + up).coerceIn(-30f, 30f))
-    }
-
-    private fun wrap180(v: Float): Float {
-        var x = v
-        while (x > 180f) x -= 360f
-        while (x < -180f) x += 360f
-        return x
-    }
 
     private fun systemPxPerMm(): Float {
         val dm = resources.displayMetrics

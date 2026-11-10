@@ -31,15 +31,50 @@ gradle wrapper --gradle-version <gradle-wrapper.properties 的版本>
 ./gradlew assembleDebug
 ```
 
-APK 輸出在 `app/build/outputs/apk/debug/`。
+APK 輸出在 `app/build/outputs/apk/debug/`。本機建置沒有傳版本號時，`versionName` 是 `0.0.0-dev`、`versionCode` 是 1。
+
+## 單元測試
+
+`app/src/test/` 是 JVM 單元測試（JUnit 4），涵蓋不需要 Android 執行環境的純邏輯：
+
+- 播放器的計算（跳轉距離、連發格數、時間格式、角度換算、鏡片上下位置）：`player/PlayerMath.kt`。
+- 檔名的解析度標記與版本優先順序：`source/VariantNames.kt`。
+- 控制器按鍵配置與自動選擇：`input/ControllerProfile.kt`。
+- 設定檔 JSON 的來回轉換與缺欄位預設值：`model/Profiles.kt`。
+
+android.jar 裡的 `org.json` 只是空殼，測試另外相依 `org.json:json`。命令列執行：`./gradlew testDebugUnitTest`。
+畫面、GL 與硬體相關的行為沒有自動化測試，要在實機上驗證。
+
+## 版本號
+
+由 CI 從 git 算出，以 Gradle 屬性 `appVersionName`、`appVersionCode` 傳給 `app/build.gradle.kts`：
+
+- 取最近的 `vX.Y.Z` tag 與之後的 commit 數 `n`（`git describe --tags --long`）。
+- `versionName`：`n = 0` 時是 `X.Y.Z`，否則是 `X.Y.Z-dev.n`。
+- `versionCode`：`(X × 10000 + Y × 100 + Z) × 100 + n`，`n` 最多算到 99。後面的版本一定比前面大，可以直接覆蓋安裝。
+- 找不到 tag 時是 `0.0.0-dev`、1。
 
 ## CI（.github/workflows/build.yml）
 
-- 觸發：每次 push、pull request，以及在 Actions 頁面手動執行（`workflow_dispatch`）。
-- 步驟：安裝 JDK 21、Android SDK、指定版本的 Gradle（含快取），執行 `gradle assembleDebug --stacktrace`，
-  把 `app/build/outputs/apk/debug/*.apk` 上傳成 artifact `VR180Player-debug`。
+- 觸發：每次 push（含 tag）、pull request，以及在 Actions 頁面手動執行（`workflow_dispatch`）。
+- 步驟：安裝 JDK 21、Android SDK、指定版本的 Gradle（含快取），算出版本號，
+  執行 `gradle testDebugUnitTest assembleDebug`，把 `app/build/outputs/apk/debug/*.apk` 上傳成 artifact `VR180Player-debug`。
 - 固定簽章：Secret `DEBUG_KEYSTORE_BASE64` 有值時，解碼成 `~/.android/debug.keystore`，讓每次建置的簽章相同；
   金鑰的產生方式見 [README](../README.md#固定簽章選用)。
+
+## 發布
+
+推 `vX.Y.Z` tag 時，CI 在編譯完成後把 APK 改名成 `VR180Player-X.Y.Z-debug.apk`，附到同名的 GitHub Release
+（已經有就覆蓋同名檔案，沒有就建立一個預先發行版）。沒有設定 `DEBUG_KEYSTORE_BASE64` 時這一步會失敗，
+因為簽章不同的 APK 不能覆蓋安裝舊版。
+
+要附上自己寫的說明時，先建立 Release 再讓它產生 tag：
+
+```bash
+gh release create vX.Y.Z --target <commit> --prerelease --title "vX.Y.Z（除錯版）：…" --notes-file notes.md
+```
+
+tag 一建立就會觸發 CI，APK 會自動附上去。
 
 ## 測試工具
 

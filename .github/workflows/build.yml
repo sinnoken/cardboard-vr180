@@ -1,4 +1,5 @@
 # 在 GitHub 雲端編譯 APK：每次推送程式碼都會自動執行，也可以在 Actions 頁面手動按「Run workflow」。
+# 推 v* tag 時另外把 APK 附到同名的 GitHub Release（沒有就建立一個預先發行版）。
 name: Build APK
 
 on:
@@ -10,9 +11,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write   # 推 tag 時上傳 APK 到 Release
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # 要完整歷史與 tag 才算得出版本號
 
       - name: 安裝 JDK 21
         uses: actions/setup-java@v6
@@ -28,6 +33,25 @@ jobs:
         with:
           gradle-version: '9.9.0'
 
+      # 版本號由最近的 vX.Y.Z tag 與之後的 commit 數算出，規則見 docs/development.md
+      - name: 計算版本號
+        id: version
+        run: |
+          d=$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --long 2>/dev/null || true)
+          if [ -z "$d" ]; then
+            name=0.0.0-dev; code=1
+          else
+            n=${d%-g*}; n=${n##*-}
+            ver=${d%-*-g*}; ver=${ver#v}
+            IFS=. read -r ma mi pa <<< "$ver"
+            [ "$n" -gt 99 ] && n=99
+            code=$(( (ma * 10000 + mi * 100 + pa) * 100 + n ))
+            name=$ver; [ "$n" -ne 0 ] && name="$ver-dev.$n"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "版本 $name（versionCode $code）"
+
       # 選用：固定簽章金鑰。沒設定時每次編譯會用不同的除錯金鑰，
       # 手機上要先移除舊版才能安裝新版。設定方式見 README。
       - name: 還原固定的除錯金鑰
@@ -38,8 +62,11 @@ jobs:
           mkdir -p ~/.android
           echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
 
-      - name: 編譯除錯版 APK
-        run: gradle assembleDebug --stacktrace
+      - name: 單元測試、編譯除錯版 APK
+        run: >
+          gradle testDebugUnitTest assembleDebug --stacktrace
+          -PappVersionName=${{ steps.version.outputs.name }}
+          -PappVersionCode=${{ steps.version.outputs.code }}
 
       - name: 上傳 APK
         uses: actions/upload-artifact@v7
@@ -47,3 +74,18 @@ jobs:
           name: VR180Player-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: 附到 GitHub Release（推 v* tag 時）
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          HAS_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 != '' }}
+        run: |
+          # 沒有固定金鑰的 APK 不能覆蓋安裝舊版，不發布
+          if [ "$HAS_KEY" != "true" ]; then echo "缺少 DEBUG_KEYSTORE_BASE64，不發布"; exit 1; fi
+          apk="VR180Player-${TAG#v}-debug.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$apk"
+          gh release view "$TAG" > /dev/null 2>&1 ||
+            gh release create "$TAG" --prerelease --title "$TAG（除錯版）" --notes "測試影片請見 v0.1.2。"
+          gh release upload "$TAG" "$apk" --clobber

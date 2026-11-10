@@ -38,6 +38,8 @@ import com.example.vr180.data.ProfileStore.BrowseOptions
 import com.example.vr180.data.ProfileStore.BrowseSort
 import com.example.vr180.source.FileSource
 import com.example.vr180.source.FsEntry
+import com.example.vr180.source.parseVariant
+import com.example.vr180.source.variantRank
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,11 +49,6 @@ import java.time.Instant
 import java.time.ZoneId
 
 private val VIDEO_EXT = setOf("mp4", "mkv", "mov", "m4v", "ts", "webm")
-
-/** 檔名結尾的解析度標記，例如 trip_8K.mp4、trip_5.7K.mp4 會被歸成同一支影片的兩個版本。 */
-private val TAG = Regex("""^(.*?)[_\-. ](8k|6k|5\.7k|4k)$""", RegexOption.IGNORE_CASE)
-// 沒有標記的「原檔」多半是母片、畫質最高，排第一；解不了會自動降版
-private val RANK = mapOf("原檔" to 5, "8k" to 4, "6k" to 3, "5.7k" to 2, "4k" to 1)
 
 /** 「包含子資料夾」往下最多幾層：NAS 每層都要一次網路請求，太深會很慢。 */
 private const val MAX_DEPTH = 3
@@ -124,9 +121,8 @@ private fun CoroutineScope.scan(
 private fun group(found: List<Found>, sort: BrowseSort): List<ListRow.Video> {
     val videos = found
         .map { f ->
-            val stem = f.entry.name.substringBeforeLast('.')
-            val m = TAG.matchEntire(stem)
-            Triple(m?.groupValues?.get(1) ?: stem, m?.groupValues?.get(2)?.uppercase() ?: "原檔", f)
+            val (base, label) = parseVariant(f.entry.name.substringBeforeLast('.'))
+            Triple(base, label, f)
         }
         // 不同資料夾的同名影片是不同影片
         .groupBy { (base, _, f) -> f.dirId to base }
@@ -134,7 +130,7 @@ private fun group(found: List<Found>, sort: BrowseSort): List<ListRow.Video> {
             val f = list.first().third
             ListRow.Video(
                 base = key.second, dirId = f.dirId, dirPath = f.dirPath,
-                variants = list.sortedByDescending { RANK[it.second.lowercase()] ?: 0 }.map { it.second to it.third.entry },
+                variants = list.sortedByDescending { variantRank(it.second) }.map { it.second to it.third.entry },
             )
         }
     return when (sort) {

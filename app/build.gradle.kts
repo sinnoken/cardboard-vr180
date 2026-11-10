@@ -13,8 +13,9 @@ android {
         applicationId = "com.example.vr180"
         minSdk = 31          // Android 12+；能硬解 8K 的手機都在這之上
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI 依 git tag 傳入（規則見 docs/development.md）；本機建置沒有傳就用開發版號
+        versionCode = providers.gradleProperty("appVersionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("appVersionName").orNull ?: "0.0.0-dev"
     }
 
     buildTypes {
@@ -51,4 +52,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.media3.exoplayer)
     implementation(libs.smbj)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.org.json)
 }
