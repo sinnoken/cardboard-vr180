@@ -501,7 +501,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun openLens() {
         lensBeforeEdit = renderer.lens
-        renderer.mode = VrRenderer.Mode.GRID
+        renderer.mode = VrRenderer.Mode.CENTER
         menu.open(lensPage)
         menu.placeInFront(lastHead, CALIB_PANEL_PITCH)
     }
@@ -520,7 +520,10 @@ class PlayerActivity : ComponentActivity() {
         MenuPage(
             title = "鏡片校正",
             hint = {
-                "設定檔：${renderer.lens.name}\n" + if (renderer.mode == VrRenderer.Mode.NONIUS)
+                "設定檔：${renderer.lens.name}\n" + if (renderer.mode == VrRenderer.Mode.CENTER)
+                    "對中心：一次閉一隻眼。同心圓的圓心要在鏡片正中央，黃色外框四邊要被鏡片邊緣切掉一樣多。" +
+                        "圓心偏左就把『左右位置』往右調，偏下就把『上下位置』往上調。"
+                else if (renderer.mode == VrRenderer.Mode.NONIUS)
                     "眼距：左眼看到十字的上半與左半，右眼看到下半與右半。調『鏡片間距』直到兩段直線接成一直線、" +
                         "橫線也對齊；黃圈是兩眼共同的參考。"
                 else
@@ -529,6 +532,9 @@ class PlayerActivity : ComponentActivity() {
             },
             rows = listOf(
                 listOf(
+                    MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.CENTER) + "對中心" }) {
+                        renderer.mode = VrRenderer.Mode.CENTER
+                    },
                     MenuItem.Button({ mark(renderer.mode == VrRenderer.Mode.NONIUS) + "眼距對準圖" }) {
                         renderer.mode = VrRenderer.Mode.NONIUS
                     },
@@ -536,17 +542,17 @@ class PlayerActivity : ComponentActivity() {
                         renderer.mode = VrRenderer.Mode.GRID
                     },
                 ),
-                listOf(lensStep("鏡片間距", 0.2f, "%.1f mm", 45f, 80f, { it.interLensMm }) { l, v -> l.copy(interLensMm = v) }),
-                listOf(lensStep("螢幕到鏡片", 0.2f, "%.1f mm", 20f, 70f, { it.screenToLensMm }) { l, v -> l.copy(screenToLensMm = v) }),
+                listOf(lensStep("左右位置", 0.5f, "%+.1f mm", -30f, 30f, { it.offsetXMm }) { l, v -> l.copy(offsetXMm = v) }),
                 listOf(
                     MenuItem.Stepper(
-                        "鏡片中心高度",
+                        "上下位置",
                         value = {
-                            if (renderer.lens.alignment == VerticalAlignment.CENTER) "（置中）"
+                            if (renderer.lens.alignment == VerticalAlignment.CENTER) "%+.1f mm".format(renderer.lens.lensHeightMm)
                             else "%.1f mm".format(renderer.lens.lensHeightMm)
                         },
-                        dec = { renderer.lens = renderer.lens.copy(lensHeightMm = (renderer.lens.lensHeightMm - 0.2f).coerceAtLeast(0f)) },
-                        inc = { renderer.lens = renderer.lens.copy(lensHeightMm = renderer.lens.lensHeightMm + 0.2f) },
+                        // 「上下位置」的 − / + 一律代表畫面往下 / 往上；以上緣為基準時數值方向相反
+                        dec = { renderer.lens = moveLensVertical(renderer.lens, -0.5f) },
+                        inc = { renderer.lens = moveLensVertical(renderer.lens, +0.5f) },
                     ),
                     MenuItem.Button({
                         "基準：" + when (renderer.lens.alignment) {
@@ -560,6 +566,8 @@ class PlayerActivity : ComponentActivity() {
                             alignment = all[(renderer.lens.alignment.ordinal + 1) % all.size])
                     },
                 ),
+                listOf(lensStep("鏡片間距", 0.2f, "%.1f mm", 45f, 80f, { it.interLensMm }) { l, v -> l.copy(interLensMm = v) }),
+                listOf(lensStep("螢幕到鏡片", 0.2f, "%.1f mm", 20f, 70f, { it.screenToLensMm }) { l, v -> l.copy(screenToLensMm = v) }),
                 listOf(
                     lensStep("k1", 0.01f, "%.2f", -0.5f, 1.5f, { it.k1 }) { l, v -> l.copy(k1 = v) },
                     lensStep("k2", 0.01f, "%.2f", -0.5f, 1.5f, { it.k2 }) { l, v -> l.copy(k2 = v) },
@@ -597,6 +605,13 @@ class PlayerActivity : ComponentActivity() {
     // ------------------------------------------------------------------ 工具
 
     private fun mark(on: Boolean) = if (on) "● " else "○ "
+
+    /** 畫面往上（up > 0）或往下移動 |up| mm，依基準換算成 lensHeightMm。 */
+    private fun moveLensVertical(l: LensProfile, up: Float): LensProfile = when (l.alignment) {
+        VerticalAlignment.BOTTOM -> l.copy(lensHeightMm = (l.lensHeightMm + up).coerceAtLeast(0f))
+        VerticalAlignment.TOP -> l.copy(lensHeightMm = (l.lensHeightMm - up).coerceAtLeast(0f))
+        VerticalAlignment.CENTER -> l.copy(lensHeightMm = (l.lensHeightMm + up).coerceIn(-30f, 30f))
+    }
 
     private fun wrap180(v: Float): Float {
         var x = v

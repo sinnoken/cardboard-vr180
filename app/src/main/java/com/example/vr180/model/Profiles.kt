@@ -15,11 +15,12 @@ data class LensProfile(
     val name: String,
     val interLensMm: Float,        // 兩鏡片中心距離（軟體上的「眼距」）
     val screenToLensMm: Float,     // 螢幕到鏡片距離，決定畫面比例
-    val lensHeightMm: Float,       // 鏡片中心到螢幕下緣（BOTTOM）或上緣（TOP）的距離
+    val lensHeightMm: Float,       // 鏡片中心到螢幕下緣（BOTTOM）或上緣（TOP）的距離；CENTER 時為相對螢幕中心的上下偏移（正 = 往上）
     val alignment: VerticalAlignment,
     val k1: Float,
     val k2: Float,
     val halfFovDeg: Float,         // 單眼可視半角，超出部分塗黑
+    val offsetXMm: Float = 0f,     // 兩眼畫面一起左右平移（正 = 往右）；手機沒放在眼鏡正中間時用
 ) {
     val isPreset: Boolean get() = id.startsWith("preset-")
 
@@ -31,6 +32,7 @@ data class LensProfile(
         .put("alignment", alignment.name)
         .put("k1", k1.toDouble()).put("k2", k2.toDouble())
         .put("halfFovDeg", halfFovDeg.toDouble())
+        .put("offsetXMm", offsetXMm.toDouble())
 
     companion object {
         fun fromJson(o: JSONObject) = LensProfile(
@@ -44,6 +46,7 @@ data class LensProfile(
             k1 = o.optDouble("k1", 0.3).toFloat(),
             k2 = o.optDouble("k2", 0.2).toFloat(),
             halfFovDeg = o.optDouble("halfFovDeg", 50.0).toFloat(),
+            offsetXMm = o.optDouble("offsetXMm", 0.0).toFloat(),
         )
 
         const val CARDBOARD_DEFAULT_ID = "preset-cardboard-v1"

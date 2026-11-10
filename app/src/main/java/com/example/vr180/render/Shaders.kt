@@ -27,7 +27,7 @@ uniform vec2 uK;                // k1, k2
 uniform float uMaxTan;
 uniform float uVideoOffset;     // 0.0 = 左半張, 0.5 = 右半張
 uniform int uEye;               // 0 左眼, 1 右眼
-uniform int uMode;              // 0 影片, 1 方格牆, 2 眼距對準圖
+uniform int uMode;              // 0 影片, 1 方格牆, 2 眼距對準圖, 3 對中心圖
 uniform bool uHasVideo;
 uniform bool uGuide;            // 水平參考線
 uniform bool uUiOn;
@@ -72,6 +72,10 @@ void main() {
     float lineAx = band(ax, 3.0);
     float lineAy = band(ay, 3.0);
     float ring = band(length(vec2(ax, ay)) - 0.30, 2.5);
+    // 對中心圖（固定在螢幕上，不跟頭轉）：以軟體認定的鏡片中心畫同心圓、十字與可視範圍外框
+    float cRings = gridLine(length(te) * 10.0, 1.5);
+    float cCross = max(band(te.x, 2.5), band(te.y, 2.5));
+    float cEdge = band(max(abs(te.x), abs(te.y)) - uMaxTan * 0.97, 4.0);
 
     vec3 col = vec3(0.0);
 
@@ -95,6 +99,12 @@ void main() {
             col = vec3(0.04);
         }
         col = mix(col, vec3(1.0, 0.25, 0.2), horizon);
+    } else if (uMode == 3) {
+        // 對中心：圓心要落在鏡片正中央，四邊外框要被鏡片邊緣切掉一樣多
+        col = vec3(0.06);
+        col = mix(col, vec3(0.55), cRings);
+        col = mix(col, vec3(0.2, 0.9, 0.3), cCross);
+        col = mix(col, vec3(1.0, 0.8, 0.2), cEdge);
     } else {
         // 眼距對準圖（nonius）：左眼只看到十字的上半與左半，右眼只看到下半與右半。
         // 鏡片間距正確時，兩半會在無限遠處接成一個完整的十字。

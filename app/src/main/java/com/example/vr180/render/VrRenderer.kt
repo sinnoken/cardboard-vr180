@@ -27,7 +27,7 @@ class VrRenderer(
     private val onVideoSurface: (Surface) -> Unit,
 ) : GLSurfaceView.Renderer {
 
-    enum class Mode(val id: Int) { VIDEO(0), GRID(1), NONIUS(2) }
+    enum class Mode(val id: Int) { VIDEO(0), GRID(1), NONIUS(2), CENTER(3) }
 
     @Volatile var lens: LensProfile = LensProfile.cardboardDefault()
     @Volatile var scene: SceneCalib = SceneCalib()
@@ -118,8 +118,9 @@ class VrRenderer(
         val cy = when (l.alignment) {
             VerticalAlignment.BOTTOM -> l.lensHeightMm * pxmm
             VerticalAlignment.TOP -> height - l.lensHeightMm * pxmm
-            VerticalAlignment.CENTER -> height / 2f
+            VerticalAlignment.CENTER -> height / 2f + l.lensHeightMm * pxmm
         }
+        val offX = l.offsetXMm * pxmm
 
         // 場景校正：內容 ← 世界 = Rs⁻¹；單眼修正（垂直落差、匯聚）各分一半給兩眼
         val rs = M3.mul(M3.rotY(rad(s.yawDeg)), M3.rotX(rad(s.pitchDeg)), M3.rotZ(rad(s.rollDeg)))
@@ -161,7 +162,7 @@ class VrRenderer(
                 M3.rotX(rad(sign * s.eyeVerticalDeg / 2f)),
             )
             val contentFromEye = M3.mul(adj, contentFromWorld, head)
-            val cx = width / 2f + (if (eye == 0) -halfSep else halfSep)
+            val cx = width / 2f + offX + (if (eye == 0) -halfSep else halfSep)
             val useRightHalf = (eye == 1) != s.swapEyes
 
             GLES30.glViewport(eye * width / 2, 0, width / 2, height)
