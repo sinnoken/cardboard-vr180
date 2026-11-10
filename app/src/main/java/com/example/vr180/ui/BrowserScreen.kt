@@ -37,6 +37,7 @@ import com.example.vr180.data.ProfileStore.BrowseOptions
 import com.example.vr180.data.ProfileStore.BrowseSort
 import com.example.vr180.source.FileSource
 import com.example.vr180.source.FsEntry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -94,6 +95,7 @@ private fun CoroutineScope.scan(
         // 目前這一層讀不到要報錯；子資料夾讀不到（權限、斷線）就略過，不讓整份清單失敗
         val entries = if (depth == 0) source.list(id) else runCatching { source.list(id) }.getOrNull()
         if (entries == null) { skipped++; continue }
+        ensureActive()
         onProgress(++scanned)
         for (e in entries) {
             when {
@@ -163,9 +165,14 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
 
     LaunchedEffect(source, dirId, reload, opt) {
         loading = true; error = null; scanned = 0
-        runCatching { withContext(Dispatchers.IO) { scan(source, dirId, opt) { scanned = it } } }
-            .onSuccess { listing = it }
-            .onFailure { error = friendlyError(it) }
+        // 掃描中換資料夾或改選項時，舊的掃描會被取消：取消要往外丟，不能當成讀取失敗顯示
+        try {
+            listing = withContext(Dispatchers.IO) { scan(source, dirId, opt) { scanned = it } }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = friendlyError(e)
+        }
         loading = false
     }
 
