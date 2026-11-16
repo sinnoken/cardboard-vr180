@@ -1,11 +1,11 @@
 [versions]
 agp = "9.5.1"
-kotlin = "2.4.20"            # 只用於 Compose 編譯器外掛；AGP 9 內建 Kotlin 支援
+kotlin = "2.4.21"            # 只用於 Compose 編譯器外掛；AGP 9 內建 Kotlin 支援
 composeBom = "2026.09.00"
 activity = "1.13.0"
-coreKtx = "1.18.0"
+coreKtx = "1.19.1"
 media3 = "1.11.0"
-smbj = "0.13.0"
+smbj = "0.15.0"
 junit = "4.13.2"
 orgJson = "20260814"   # 只用於 JVM 單元測試：android.jar 裡的 org.json 是空殼
 
