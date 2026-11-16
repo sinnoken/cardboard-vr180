@@ -28,12 +28,14 @@ jobs:
         id: dup
         env:
           GH_TOKEN: ${{ github.token }}
+          # PR 的 GITHUB_SHA 是 GitHub 產生的合併 commit，要用 PR 分支上的 commit 才比得到同一個分支推送的建置
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           skip=false
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
             q="[.workflow_runs[] | select(.id < $GITHUB_RUN_ID)"
             q="$q | select(.status != \"completed\" or .conclusion == \"success\")] | length"
-            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$GITHUB_SHA&per_page=50"               -q "$q" || echo 0)
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml/runs?head_sha=$SHA&per_page=50"               -q "$q" || echo 0)
             if [ "$n" -gt 0 ]; then skip=true; echo "這個 commit 已有更早的建置成功或正在跑，跳過"; fi
           fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"

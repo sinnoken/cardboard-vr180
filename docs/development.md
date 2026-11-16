@@ -60,6 +60,7 @@ CI computes them from git and passes them to `app/build.gradle.kts` as the Gradl
   Pushes and pull requests that change only `docs/` or `*.md` do not build.
 - Dedupe: if an earlier build of the same commit has succeeded or is still running, the whole build is skipped (for example, a fast-forward merge into `main`).
   Only earlier builds count, so two builds pushed at the same time do not skip each other. Manual runs always build.
+  For pull requests the PR head commit is compared (the event's own SHA is GitHub's merge commit), so a branch push and its pull request build only once.
 - Steps: install JDK 21, the Android SDK, and the pinned Gradle version (with cache); validate the two shaders in `render/Shaders.kt`
   with `glslangValidator` (they compile only at app runtime, so Gradle cannot catch syntax errors); compute the version number;
   run `gradle testDebugUnitTest assembleDebug`; upload `app/build/outputs/apk/debug/*.apk` as the artifact `VR180Player-debug`
