@@ -1,0 +1,21 @@
+# Dependabot：每週檢查一次 Gradle 相依套件（gradle/libs.versions.toml）與 GitHub Actions 的新版，
+# 有新版就開 PR，由 Build APK 驗證。小版本合併成一個 PR，大版本各自一個，合併前看過 changelog。
+# CI 用的 Gradle 版本寫在 build.yml 的 setup-gradle，不在這裡更新。
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

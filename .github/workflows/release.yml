@@ -58,7 +58,7 @@ jobs:
           run_id=$(gh api "repos/$GH_REPO/actions/artifacts?name=VR180Player-debug&per_page=100" \
             -q "[.artifacts[] | select(.workflow_run.head_sha == \"$GITHUB_SHA\" and .expired == false)][0].workflow_run.id // empty")
           if [ -z "$run_id" ]; then
-            echo "::error::$GITHUB_SHA 沒有可用的 APK：Build APK 還沒跑完、失敗，或這個 commit 只改了文件"; exit 1
+            echo "::error::$GITHUB_SHA 沒有可用的 APK：Build APK 還沒跑完、失敗、只改了文件，或沒有用固定金鑰簽章（例如 Dependabot 的建置）。可以在 Build APK 手動執行一次再發行"; exit 1
           fi
           conclusion=$(gh run view "$run_id" --json conclusion -q .conclusion)
           if [ "$conclusion" != success ]; then

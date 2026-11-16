@@ -62,7 +62,8 @@ CI computes them from git and passes them to `app/build.gradle.kts` as the Gradl
   Only earlier builds count, so two builds pushed at the same time do not skip each other. Manual runs always build.
 - Steps: install JDK 21, the Android SDK, and the pinned Gradle version (with cache); validate the two shaders in `render/Shaders.kt`
   with `glslangValidator` (they compile only at app runtime, so Gradle cannot catch syntax errors); compute the version number;
-  run `gradle testDebugUnitTest assembleDebug`; upload `app/build/outputs/apk/debug/*.apk` as the artifact `VR180Player-debug`.
+  run `gradle testDebugUnitTest assembleDebug`; upload `app/build/outputs/apk/debug/*.apk` as the artifact `VR180Player-debug`
+  (`VR180Player-debug-random-key` when the fixed signing key is not available, so a release never picks it up).
 - Fixed signing key: when the secret `DEBUG_KEYSTORE_BASE64` is set, it is decoded to `~/.android/debug.keystore`, so every build has the same signature.
   For how to generate the key, see [README](../README.md#fixed-signing-key-optional).
 
@@ -75,7 +76,8 @@ A release reuses the APK that CI already built for the commit; nothing is compil
 3. The workflow:
    - stops if the version is not `X.Y.Z`, `vX.Y.Z` already exists, or the secret `DEBUG_KEYSTORE_BASE64` is missing (an APK with a different signature cannot be installed over the old version);
    - finds the `VR180Player-debug` artifact uploaded by a successful Build APK run of the same commit, and stops if there is none
-     (the build failed or is still running, the commit changed only docs, or the artifact expired after 90 days);
+     (the build failed or is still running, the commit changed only docs, the build had no fixed signing key, or the artifact expired after 90 days).
+     In that case run Build APK manually on `main` (manual runs always build) and release again;
    - renames it to `VR180Player-X.Y.Z-debug.apk` and creates the tag `vX.Y.Z` and the Release on that commit.
 
 Tags created by the workflow do not trigger Build APK, so each commit builds only once.
@@ -83,6 +85,16 @@ Because the APK was built before the tag existed, its internal `versionName` is 
 `versionCode` still grows with every commit, so the APK installs over the previous release, and later builds count from the new tag.
 
 If a release needs different notes, edit the Release on GitHub afterwards. To redo a release, delete the Release and its tag first.
+
+## Dependency updates (.github/dependabot.yml)
+
+Dependabot checks Gradle dependencies (`gradle/libs.versions.toml`) and GitHub Actions weekly and opens pull requests; Build APK verifies them.
+Minor and patch updates are grouped into one pull request, major updates get their own. Read the changelog before merging.
+The Gradle version used by CI is pinned in `build.yml` (`setup-gradle`) and is not updated by Dependabot.
+
+Dependabot runs cannot read repository secrets, so their APK is built with a random key and is not releasable.
+After fast-forwarding a Dependabot change into `main`, the `main` build is skipped by dedupe; run Build APK manually before releasing that commit,
+or add `DEBUG_KEYSTORE_BASE64` under Settings › Secrets and variables › Dependabot so those builds are signed too.
 
 ## Test tools
 

@@ -114,9 +114,11 @@ jobs:
           -PappVersionName=${{ steps.version.outputs.name }}
           -PappVersionCode=${{ steps.version.outputs.code }}
 
+      # 沒有固定金鑰（例如 Dependabot 的 PR 拿不到 repo secret）時換一個名字：
+      # Release 只認 VR180Player-debug，簽章不同、不能覆蓋安裝的 APK 不會被發出去
       - name: 上傳 APK
         uses: actions/upload-artifact@v7
         with:
-          name: VR180Player-debug
+          name: ${{ secrets.DEBUG_KEYSTORE_BASE64 != '' && 'VR180Player-debug' || 'VR180Player-debug-random-key' }}
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
