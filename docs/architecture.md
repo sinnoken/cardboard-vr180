@@ -267,7 +267,7 @@ Other actions are checked in order:
 ### VrMenu focus rules
 
 - Up/down moves to the previous/next cell in reading order (when a row has two value items, only the right one is reachable).
-  On `BAR` pages, up/down moves between rows instead: going up remembers the icon, and going down returns to it (otherwise to the nearest icon).
+  On `BAR` pages, up/down moves between rows instead; going down returns to the last focused icon (by controller or gaze), which is the play button when the page opens.
 - Each page opens with focus on `initialFocus`; the main menu uses the play button.
 - Left/right: value items adjust the value; the seek bar calls the same `holdSeek` as with the menu closed; buttons move focus within the row.
 - Confirm: buttons run their action; value items adjust only when the gaze is on the − / + zone of the same cell; the seek bar jumps to the gaze position only when the gaze is on the seek bar.

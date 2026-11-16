@@ -6,7 +6,7 @@
     <string name="player_cancel">Cancel</string>
     <string name="player_save">Save</string>
     <string name="player_reset_all">Reset all</string>
-    <string name="player_start_hint">Put on the viewer, look straight ahead, then press any button or tap the screen to start. No controller: look at an item and tap the screen; tap while looking away to close the menu; long-press to recenter.</string>
+    <string name="player_start_hint">Look straight ahead, then press any button or tap the screen to start. No controller: look at an item and tap; tap elsewhere to close the menu; long-press to recenter.</string>
     <string name="player_start">Start</string>
     <string name="player_play">Play</string>
     <string name="player_pause">Pause</string>

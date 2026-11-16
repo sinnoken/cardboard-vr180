@@ -117,6 +117,7 @@ class VrMenu {
         page = p
         layout()
         focus = p.initialFocus
+        barReturn = p.initialFocus
         if (!visible) placeInFront(head)
         visible = true
         dirty = true
@@ -127,6 +128,7 @@ class VrMenu {
         page = p
         layout()
         focus = p.initialFocus
+        barReturn = p.initialFocus
         dirty = true
     }
 
@@ -218,7 +220,7 @@ class VrMenu {
             // 視線移到「另一個」項目時才搶走焦點，避免蓋掉控制器的選擇
             if (hit != gazeCell) {
                 gazeCell = hit
-                if (hit != null) focus = hit
+                if (hit != null) { focus = hit; rememberBarIcon() }
                 dirty = true
             }
             if (zone != gazeZone) { gazeZone = zone; dirty = true }
@@ -274,22 +276,25 @@ class VrMenu {
             }
             NavAction.BACK -> p.onBack()
         }
+        rememberBarIcon()
         dirty = true
         return true
     }
 
+    /** 控制列上最後一個有焦點的圖示（不論是控制器還是視線移過去的）；打開頁面時是播放鍵。 */
     private var barReturn = -1
 
-    /**
-     * 控制列的上下鍵：在進度列與圖示列之間移動。從圖示列往上時記住位置，
-     * 回到圖示列時回到原本的圖示（通常是播放鍵），不是剛好在進度列正下方的那個。
-     */
+    private fun rememberBarIcon() {
+        val c = cells.getOrNull(focus) ?: return
+        if (page?.style == PageStyle.BAR && c.item is MenuItem.IconButton) barReturn = focus
+    }
+
+    /** 控制列的上下鍵：在進度列與圖示列之間移動；回到圖示列時回到最後一個有焦點的圖示。 */
     private fun barVertical(cur: Cell, up: Boolean): Int {
         val target = cur.row + if (up) -1 else 1
         val row = cells.withIndex().filter { it.value.row == target }
         if (row.isEmpty()) return focus
-        if (up) barReturn = focus
-        if (!up && row.any { it.index == barReturn }) return barReturn
+        if (row.any { it.index == barReturn }) return barReturn
         return row.minBy { abs(it.value.rect.centerX() - cur.rect.centerX()) }.index
     }
 
