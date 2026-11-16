@@ -51,7 +51,7 @@ When written:
 - "Save" in screen size calibration: changes only `pxPerMm`; the value is system density × slider factor (0.85–1.15).
 - A completed gyro check with a valid result: changes only `yawDriftDegPerSec`.
 - Releasing the motion prediction slider: changes only `predictionMs` (UI range 0–60).
-- Switching recenter mode in the player's "Settings…": changes only `fullRecenter`; takes effect immediately.
+- Switching recenter mode in the player's "Settings": changes only `fullRecenter`; takes effect immediately.
 
 The player reads it once at playback start and does not reread it during playback (switching recenter mode in the player also updates the in-memory value).
 

@@ -61,7 +61,7 @@ All setup steps are optional. You can pick a video and play it right away. On pl
 3. **Viewer profiles (can be skipped)**: By default, Cardboard defaults are used (the same as Cardboard SDK without a scanned viewer).
    Presets are never modified: if you start from a preset, calibrate in VR, and save, the result is saved as a new "My viewer (based on …)" profile and activated.
    Later calibrations update this profile directly. If you mess it up, switch back to the defaults on the home screen at any time.
-4. Play any video, open the menu › **Settings…** › **Lens calibration** (do this wearing the viewer):
+4. Play any video, open the menu › **Settings** › **Lens calibration** (do this wearing the viewer):
    - Centering (the first pattern when calibration opens): The phone is not always centered in the viewer, so you move the image instead of the phone.
      Close one eye at a time. Adjust "Horizontal offset" and "Vertical position" so the center of the concentric circles sits in the middle of the lens, and the lens edge cuts off the same amount of the yellow frame on all four sides.
      If the center is high in one eye and low in the other, the phone is tilted in the viewer. Adjust "Tilt".
@@ -69,7 +69,7 @@ All setup steps are optional. You can pick a video and play it right away. On pl
    - Grid wall: Look straight ahead and adjust k1 until the lines are straight. Look at the edges and adjust k2. Finally, turn your head left and right. The grid should look pinned to a wall.
      If it follows your head or slides the opposite way, adjust "Screen to lens".
    - If you get lost, press "Cardboard defaults" to return to the starting point (nothing is written until you press "Save").
-5. Only when a specific video was shot crooked do you need **Settings… › Video calibration**:
+5. Only when a specific video was shot crooked do you need **Settings › Video calibration**:
    Look at the subject and select "Set forward" to set both yaw and pitch at once. If the horizon is tilted, adjust "Horizon".
    "Eye vertical offset", "Convergence", and eye swap ("Eyes") are under "Advanced…". Always finish lens calibration before this step.
 
@@ -108,7 +108,7 @@ The controller test page shows every signal the controller sends and the action 
 
 The volume keys are passed to the system. When you change the volume with controller buttons, the current volume appears in the menu's status line (the system volume panel is not visible in VR).
 
-**Recenter mode** (switch it in the player menu under "Settings…"; it is remembered)
+**Recenter mode** (switch it in the player menu under "Settings"; it is remembered)
 
 - Horizontal only (default): for watching seated or standing. Recenter resets only the left/right direction. The horizon always stays aligned with the real world.
 - Full orientation: for watching lying down or on your side. Recenter also resets up/down and tilt, so the video appears upright in front of you. Recenter again after changing posture.
@@ -120,15 +120,22 @@ The volume keys are passed to the system. When you change the volume with contro
 - Previous / next: follows the order on the video list screen (including sort and filters). Holding does not switch repeatedly.
   If the system kills the app in the background and you return to the player, the list is gone and only the current video can play.
 
-**Seek bar** (the row below the play button in the main menu)
+**Main menu (control bar)**
+
+- Opens as a bar just below where you are looking, like the controls of a regular media player; the center of the video stays clear. It stays until you close it.
+- Top: video title and status (errors first). Middle: seek bar. Bottom: icons for previous video, back 10 s, play/pause, forward 10 s, next video, recenter, settings, exit.
+  The name of the focused icon is shown below it. Previous/next are grayed out when there is no video in that direction.
+- Focus starts on play/pause. Left/right moves between icons; up goes to the seek bar, down returns to the icon you came from.
+
+**Seek bar** (the row above the icons in the main menu)
 
 - With focus on the seek bar, each left/right press jumps 10 seconds. Holding jumps farther and farther (same as with the menu closed).
 - Look at a position on the seek bar (a yellow line appears) and press confirm to jump there.
 
 **Playback state**
 
-- The play button changes with the state: "Play", "Pause", "Replay" (at the end), or "Retry" (on error).
-- At the end or on error, the menu opens automatically and shows the cause of the error on the panel.
+- The play button changes with the state: Play, Pause, or a circular arrow for Replay (at the end) and Retry (on error).
+- At the end or on error, the menu opens automatically and shows the cause of the error in the control bar.
 - Resume: each video remembers where you left off (shared by all resolution variants of the same video). Opening it or switching to it resumes from there,
   and the status line shows "Resuming at 12:34". Positions under 5 seconds are not saved. Reaching the last 30 seconds counts as finished, and the next play starts from the beginning. To start over, jump to the far left of the seek bar.
 

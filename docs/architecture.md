@@ -217,7 +217,10 @@ and one full-screen quad. Each frame draws once per eye with no intermediate fra
 - The panel is a world-fixed plane: center direction `f`, right `r`, up `u`, horizontal half-width `tan 27°`, kept upright (`r` lies in the horizontal plane).
   The main menu is placed in the gaze direction when opened; calibration pages are placed 36° below horizontal straight ahead, so the test pattern in the center is not covered.
 - Each frame intersects the gaze with the panel to find the item under the gaze, the − / + zones of value items (22% of the width on each side), and the position on the seek bar (quantized to 1/200).
-- Layout: title, up to 5 lines of status and help (status first; help is truncated when it overflows), then rows that split their width evenly.
+- Layout depends on the page style (`PageStyle`):
+  - `PANEL` (settings, calibration, start): title, up to 5 lines of status and help (status first; help is truncated when it overflows), then rows that split their width evenly.
+  - `BAR` (main menu): only a 960×405 strip at the bottom of the bitmap is drawn; the rest is transparent, so the bar sits below the gaze and the video center stays clear.
+    The strip holds the title (one line, ellipsized), up to 2 lines of status, the seek bar row, the icon row (icons drawn with Canvas shapes), and the focused icon's name.
 
 ## Input
 
@@ -264,11 +267,13 @@ Other actions are checked in order:
 ### VrMenu focus rules
 
 - Up/down moves to the previous/next cell in reading order (when a row has two value items, only the right one is reachable).
+  On `BAR` pages, up/down moves between rows instead: going up remembers the icon, and going down returns to it (otherwise to the nearest icon).
+- Each page opens with focus on `initialFocus`; the main menu uses the play button.
 - Left/right: value items adjust the value; the seek bar calls the same `holdSeek` as with the menu closed; buttons move focus within the row.
 - Confirm: buttons run their action; value items adjust only when the gaze is on the − / + zone of the same cell; the seek bar jumps to the gaze position only when the gaze is on the seek bar.
 - The gaze takes focus only when it moves to a "different" item, so it does not override the controller's selection.
 - When the panel has just been placed in front of the gaze (open, bring back, recenter), the cell under the gaze is ignored until the gaze moves to another cell.
-  When the main menu opens, the panel center lands exactly on "Settings…". This rule keeps "open and press confirm" acting on the play button,
+  This keeps "open and press confirm" acting on the focused item even when the panel center lands on another cell,
   and keeps "look elsewhere and tap to close the menu" working as before.
 
 ### Controller test page

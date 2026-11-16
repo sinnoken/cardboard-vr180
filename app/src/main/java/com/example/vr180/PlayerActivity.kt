@@ -55,9 +55,11 @@ import com.example.vr180.source.ORIGINAL_LABEL
 import com.example.vr180.source.SidecarIo
 import com.example.vr180.source.SidecarRef
 import com.example.vr180.tracking.HeadTracker
+import com.example.vr180.vrui.Icon
 import com.example.vr180.vrui.MenuItem
 import com.example.vr180.vrui.MenuPage
 import com.example.vr180.vrui.NavAction
+import com.example.vr180.vrui.PageStyle
 import com.example.vr180.vrui.VrMenu
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -659,15 +661,18 @@ class PlayerActivity : ComponentActivity() {
 
     private fun refreshStatus() {
         val label = variantLabel(labels.getOrElse(variantIndex) { "" })
-        // 最重要的放前面：面板文字最多 5 行，超過的會被截掉
+        // 最重要的放前面：控制列的狀態最多 2 行，超過的會被截掉
         menu.status = buildString {
             if (message.isNotBlank()) append(message).append('\n')
-            append(fmtTime(posMs)).append(" / ").append(if (durMs > 0) fmtTime(durMs) else "--:--")
-            if (buffering) append(" · ").append(getString(R.string.player_status_loading))
-            if (label.isNotBlank()) append(" · ").append(getString(R.string.player_status_variant, label, variantIndex + 1, uris.size))
-            append(" · $videoSize · ").append(getString(R.string.player_status_decoder, decoderName))
-            append('\n').append(getString(R.string.player_status_controller, controllerName))
-            if (::renderer.isInitialized && renderer.scene != SceneCalib()) append(" · ").append(getString(R.string.player_status_scene_applied))
+            // 時間顯示在控制列的進度列上，這裡不重複
+            val parts = ArrayList<String>()
+            if (buffering) parts += getString(R.string.player_status_loading)
+            if (label.isNotBlank()) parts += getString(R.string.player_status_variant, label, variantIndex + 1, uris.size)
+            parts += videoSize
+            parts += getString(R.string.player_status_decoder, decoderName)
+            parts += getString(R.string.player_status_controller, controllerName)
+            if (::renderer.isInitialized && renderer.scene != SceneCalib()) parts += getString(R.string.player_status_scene_applied)
+            append(parts.filter { it.isNotBlank() }.joinToString(" · "))
         }
         if (::glView.isInitialized) glView.queueEvent { menu.invalidate() }
     }
@@ -744,26 +749,15 @@ class PlayerActivity : ComponentActivity() {
         runOnUiThread { player?.playWhenReady = true }
     }
 
-    // ---- 主選單：只放每次看片都會用到的 ----
+    // ---- 主選單：像一般播放器的底部控制列，只放每次看片都會用到的 ----
+
+    private fun hasNeighbor(d: Int) = playlistIndex >= 0 && (playlistIndex + d) in Playlist.items.indices
 
     private val mainPage: MenuPage by lazy {
         MenuPage(
             title = { videoTitle.ifBlank { getString(R.string.player_app_title) } },
-            hint = { getString(R.string.player_main_hint) },
+            hint = { "" },
             rows = listOf(
-                listOf(
-                    MenuItem.Button({
-                        when {
-                            playerFailed -> getString(R.string.player_retry)
-                            playerEnded -> getString(R.string.player_replay)
-                            playing -> getString(R.string.player_pause)
-                            else -> getString(R.string.player_play)
-                        }
-                    }) { runOnUiThread { playButton() } },
-                    MenuItem.Button({ getString(R.string.player_seek_back_10s) }) { runOnUiThread { seekBy(-10_000) } },
-                    MenuItem.Button({ getString(R.string.player_seek_fwd_10s) }) { runOnUiThread { seekBy(10_000) } },
-                ),
-                // 進度列放在播放鍵下面：打開選單時焦點仍在播放鍵，按確認不會誤跳
                 listOf(
                     MenuItem.Seek(
                         label = { fmtTime(posMs) + " / " + if (durMs > 0) fmtTime(durMs) else "--:--" },
@@ -782,13 +776,51 @@ class PlayerActivity : ComponentActivity() {
                     ),
                 ),
                 listOf(
-                    MenuItem.Button({ getString(R.string.player_recenter) }) { tracker.recenter(); replaceMenu = true },
-                    MenuItem.Button({ getString(R.string.player_settings) }) { menu.open(settingsPage) },
-                    MenuItem.Button({ getString(R.string.player_exit) }) { runOnUiThread { finish() } },
+                    MenuItem.IconButton({ Icon.PREV }, { getString(R.string.player_prev_video) }, { hasNeighbor(-1) }) {
+                        runOnUiThread { switchVideo(-1) }
+                    },
+                    MenuItem.IconButton({ Icon.REWIND }, { getString(R.string.player_seek_back_10s) }) {
+                        runOnUiThread { seekBy(-10_000) }
+                    },
+                    MenuItem.IconButton(
+                        icon = {
+                            when {
+                                playerFailed || playerEnded -> Icon.REPLAY
+                                playing -> Icon.PAUSE
+                                else -> Icon.PLAY
+                            }
+                        },
+                        label = {
+                            when {
+                                playerFailed -> getString(R.string.player_retry)
+                                playerEnded -> getString(R.string.player_replay)
+                                playing -> getString(R.string.player_pause)
+                                else -> getString(R.string.player_play)
+                            }
+                        },
+                    ) { runOnUiThread { playButton() } },
+                    MenuItem.IconButton({ Icon.FORWARD }, { getString(R.string.player_seek_fwd_10s) }) {
+                        runOnUiThread { seekBy(10_000) }
+                    },
+                    MenuItem.IconButton({ Icon.NEXT }, { getString(R.string.player_next_video) }, { hasNeighbor(1) }) {
+                        runOnUiThread { switchVideo(1) }
+                    },
+                    MenuItem.IconButton({ Icon.RECENTER }, { getString(R.string.player_recenter) }) {
+                        tracker.recenter(); replaceMenu = true
+                    },
+                    MenuItem.IconButton({ Icon.SETTINGS }, { getString(R.string.player_settings) }) {
+                        menu.open(settingsPage)
+                    },
+                    MenuItem.IconButton({ Icon.EXIT }, { getString(R.string.player_exit) }) {
+                        runOnUiThread { finish() }
+                    },
                 ),
             ),
             onBack = { closeMenu() },
             showStatus = true,
+            style = PageStyle.BAR,
+            // 進度列是第 0 格，播放鍵是圖示列的第 3 個：打開選單就按確認仍然是播放／暫停
+            initialFocus = 3,
         )
     }
 

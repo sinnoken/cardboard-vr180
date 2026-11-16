@@ -4,12 +4,14 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.TextUtils
 import com.example.vr180.render.M3
 import kotlin.math.abs
 import kotlin.math.cos
@@ -37,7 +39,24 @@ sealed class MenuItem {
         val step: (dir: Int) -> Unit,
         val seekTo: (Float) -> Unit,
     ) : MenuItem()
+
+    /** 控制列上的圖示按鈕；焦點落在它上面時，label 顯示在圖示下方。停用時畫成灰色、按了沒反應。 */
+    data class IconButton(
+        val icon: () -> Icon,
+        val label: () -> String,
+        val enabled: () -> Boolean = { true },
+        val action: () -> Unit,
+    ) : MenuItem()
 }
+
+/** 控制列的圖示，用簡單幾何圖形畫，不需要圖示字型或圖檔。 */
+enum class Icon { PLAY, PAUSE, REPLAY, REWIND, FORWARD, PREV, NEXT, RECENTER, SETTINGS, EXIT }
+
+/**
+ * PANEL：整面文字面板（設定、校正）。
+ * BAR：像一般播放器的底部控制列，只畫在面板下緣，其餘透明，不擋影片。
+ */
+enum class PageStyle { PANEL, BAR }
 
 class MenuPage(
     /** 每次重畫時讀取：切換影片後主選單的標題要跟著換。 */
@@ -46,6 +65,9 @@ class MenuPage(
     val rows: List<List<MenuItem>>,
     val onBack: () -> Unit,
     val showStatus: Boolean = false,
+    val style: PageStyle = PageStyle.PANEL,
+    /** 打開這頁時的焦點（依閱讀順序的格子編號）。 */
+    val initialFocus: Int = 0,
 )
 
 enum class NavAction { UP, DOWN, LEFT, RIGHT, SELECT, BACK }
@@ -94,7 +116,7 @@ class VrMenu {
     fun show(p: MenuPage, head: FloatArray) {
         page = p
         layout()
-        focus = 0
+        focus = p.initialFocus
         if (!visible) placeInFront(head)
         visible = true
         dirty = true
@@ -104,7 +126,7 @@ class VrMenu {
     fun open(p: MenuPage) {
         page = p
         layout()
-        focus = 0
+        focus = p.initialFocus
         dirty = true
     }
 
@@ -222,7 +244,8 @@ class VrMenu {
             // 上下鍵依閱讀順序走到上一格／下一格：同一列有兩個數值項目時（例如 k1、k2），
             // 左右鍵已經拿去調數值，只有這樣右邊那格才走得到
             NavAction.UP, NavAction.DOWN -> {
-                focus = (focus + if (a == NavAction.UP) -1 else 1).coerceIn(cells.indices)
+                focus = if (p.style == PageStyle.BAR) barVertical(cur, a == NavAction.UP)
+                    else (focus + if (a == NavAction.UP) -1 else 1).coerceIn(cells.indices)
                 gazeZone = Zone.NONE
             }
             NavAction.LEFT, NavAction.RIGHT -> {
@@ -239,6 +262,7 @@ class VrMenu {
             }
             NavAction.SELECT -> when (val item = cur.item) {
                 is MenuItem.Button -> item.action()
+                is MenuItem.IconButton -> if (item.enabled()) item.action()
                 // 視線的 − / + 區只對「視線所在的那一格」有效，避免視線在 A、焦點在 B 時調到 B
                 is MenuItem.Stepper -> when (if (gazeCell == focus) gazeZone else Zone.NONE) {
                     Zone.DEC -> item.dec()
@@ -252,6 +276,21 @@ class VrMenu {
         }
         dirty = true
         return true
+    }
+
+    private var barReturn = -1
+
+    /**
+     * 控制列的上下鍵：在進度列與圖示列之間移動。從圖示列往上時記住位置，
+     * 回到圖示列時回到原本的圖示（通常是播放鍵），不是剛好在進度列正下方的那個。
+     */
+    private fun barVertical(cur: Cell, up: Boolean): Int {
+        val target = cur.row + if (up) -1 else 1
+        val row = cells.withIndex().filter { it.value.row == target }
+        if (row.isEmpty()) return focus
+        if (up) barReturn = focus
+        if (!up && row.any { it.index == barReturn }) return barReturn
+        return row.minBy { abs(it.value.rect.centerX() - cur.rect.centerX()) }.index
     }
 
     /** 視線是否正落在某個項目上（Cardboard 按鈕據此決定要「選取」還是「關閉選單」）。 */
@@ -274,8 +313,17 @@ class VrMenu {
     private val gap = 10f
     private val seekInset = 24f   // 進度列左右內縮，視線換算與繪製共用
 
+    // 控制列：面板下緣的一條。面板中心就是打開時的視線方向，控制列在它下方，影片中央不被擋住
+    private val barRect = RectF(120f, 585f, 1080f, 990f)
+    private val barPad = 28f
+    private val barSeekTop = barRect.top + 160f
+    private val barSeekH = 70f
+    private val barIconTop = barRect.top + 245f
+    private val barIconH = 100f
+
     private fun layout() {
         val p = page ?: return
+        if (p.style == PageStyle.BAR) { layoutBar(p); return }
         val list = ArrayList<Cell>()
         var y = pad + titleH + hintH
         p.rows.forEachIndexed { ri, row ->
@@ -285,6 +333,23 @@ class VrMenu {
                 list += Cell(item, RectF(x, y, x + w, y + rowH - gap), ri, ci)
             }
             y += rowH
+        }
+        cells = list
+    }
+
+    /** 控制列只有兩列：第一列進度列，第二列圖示。 */
+    private fun layoutBar(p: MenuPage) {
+        val list = ArrayList<Cell>()
+        val left = barRect.left + barPad
+        val inner = barRect.width() - 2 * barPad
+        p.rows.forEachIndexed { ri, row ->
+            val top = if (ri == 0) barSeekTop else barIconTop
+            val h = if (ri == 0) barSeekH else barIconH
+            val w = (inner - gap * (row.size - 1)) / row.size
+            row.forEachIndexed { ci, item ->
+                val x = left + ci * (w + gap)
+                list += Cell(item, RectF(x, top, x + w, top + h), ri, ci)
+            }
         }
         cells = list
     }
@@ -308,10 +373,27 @@ class VrMenu {
     private val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE; textSize = 38f; textAlign = Paint.Align.CENTER
     }
+    private val barTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE; textSize = 34f; typeface = Typeface.DEFAULT_BOLD
+    }
+    private val barStatusPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(200, 205, 215); textSize = 26f
+    }
+    private val barLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE; textSize = 32f; textAlign = Paint.Align.CENTER
+    }
+    private val iconFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val iconStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND
+    }
+    private val iconOn = Color.WHITE
+    private val iconOff = Color.rgb(100, 104, 115)
+    private val path = Path()
 
     private fun draw() {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val p = page ?: return
+        if (p.style == PageStyle.BAR) { drawBar(p); return }
         canvas.drawRoundRect(RectF(0f, 0f, bmpW.toFloat(), bmpH.toFloat()), 36f, 36f, bg)
         canvas.drawText(p.title(), pad, pad + 52f, titlePaint)
 
@@ -346,20 +428,139 @@ class VrMenu {
                     canvas.drawText("+", right.centerX(), baseline, textPaint)
                     canvas.drawText("${item.label}  ${item.value()}", c.rect.centerX(), baseline, textPaint)
                 }
+                is MenuItem.Seek -> drawSeek(item, c.rect, i)
+                is MenuItem.IconButton -> drawIconCell(item, c.rect)
+            }
+        }
+    }
+
+    private fun drawSeek(item: MenuItem.Seek, rect: RectF, i: Int) {
+        canvas.drawText(item.label(), rect.centerX(), rect.top + 34f, seekTextPaint)
+        val bar = RectF(rect.left + seekInset, rect.bottom - 22f, rect.right - seekInset, rect.bottom - 12f)
+        canvas.drawRoundRect(bar, 5f, 5f, trackBg)
+        val frac = item.fraction()
+        if (frac >= 0f) {
+            val done = RectF(bar.left, bar.top, bar.left + bar.width() * frac.coerceIn(0f, 1f), bar.bottom)
+            canvas.drawRoundRect(done, 5f, 5f, trackFg)
+        }
+        if (gazeCell == i && gazeSeek >= 0f) {
+            val x = bar.left + bar.width() * gazeSeek
+            canvas.drawRect(x - 3f, rect.top + 6f, x + 3f, rect.bottom - 6f, zoneBg)
+        }
+    }
+
+    private fun drawBar(p: MenuPage) {
+        canvas.drawRoundRect(barRect, 28f, 28f, bg)
+        val textW = barRect.width() - 2 * barPad
+        val title = TextUtils.ellipsize(p.title(), barTitlePaint, textW, TextUtils.TruncateAt.END).toString()
+        canvas.drawText(title, barRect.left + barPad, barRect.top + barPad + 34f, barTitlePaint)
+
+        // 狀態（錯誤訊息排最前面）最多兩行，超過截掉
+        val st = if (p.showStatus) status else ""
+        if (st.isNotBlank()) {
+            val sl = StaticLayout.Builder.obtain(st, 0, st.length, barStatusPaint, textW.toInt())
+                .setMaxLines(2).setEllipsize(TextUtils.TruncateAt.END).build()
+            canvas.save()
+            canvas.translate(barRect.left + barPad, barRect.top + barPad + 52f)
+            sl.draw(canvas)
+            canvas.restore()
+        }
+
+        cells.forEachIndexed { i, c ->
+            val focused = i == focus
+            when (val item = c.item) {
                 is MenuItem.Seek -> {
-                    canvas.drawText(item.label(), c.rect.centerX(), c.rect.top + 34f, seekTextPaint)
-                    val bar = RectF(c.rect.left + seekInset, c.rect.bottom - 22f, c.rect.right - seekInset, c.rect.bottom - 12f)
-                    canvas.drawRoundRect(bar, 5f, 5f, trackBg)
-                    val frac = item.fraction()
-                    if (frac >= 0f) {
-                        val done = RectF(bar.left, bar.top, bar.left + bar.width() * frac.coerceIn(0f, 1f), bar.bottom)
-                        canvas.drawRoundRect(done, 5f, 5f, trackFg)
-                    }
-                    if (gazeCell == i && gazeSeek >= 0f) {
-                        val x = bar.left + bar.width() * gazeSeek
-                        canvas.drawRect(x - 3f, c.rect.top + 6f, x + 3f, c.rect.bottom - 6f, zoneBg)
-                    }
+                    canvas.drawRoundRect(c.rect, 18f, 18f, if (focused) focusBg else cellBg)
+                    drawSeek(item, c.rect, i)
                 }
+                is MenuItem.IconButton -> {
+                    if (focused) canvas.drawRoundRect(c.rect, 18f, 18f, focusBg)
+                    drawIconCell(item, c.rect)
+                }
+                is MenuItem.Button -> {
+                    canvas.drawRoundRect(c.rect, 18f, 18f, if (focused) focusBg else cellBg)
+                    canvas.drawText(item.label(), c.rect.centerX(), c.rect.centerY() + 13f, textPaint)
+                }
+                is MenuItem.Stepper -> {}
+            }
+        }
+
+        // 焦點所在圖示的名稱：鏡片下圖示會糊，有字比較不會按錯
+        val fc = cells.getOrNull(focus)
+        val fi = fc?.item
+        if (fc != null && fi is MenuItem.IconButton) {
+            val label = fi.label()
+            val half = barLabelPaint.measureText(label) / 2f
+            val x = fc.rect.centerX().coerceIn(barRect.left + barPad + half, barRect.right - barPad - half)
+            canvas.drawText(label, x, barIconTop + barIconH + 40f, barLabelPaint)
+        }
+    }
+
+    private fun drawIconCell(item: MenuItem.IconButton, rect: RectF) {
+        drawIcon(item.icon(), rect.centerX(), rect.centerY(), 28f, if (item.enabled()) iconOn else iconOff)
+    }
+
+    /** s：圖示半徑（像素）。 */
+    private fun drawIcon(icon: Icon, cx: Float, cy: Float, s: Float, color: Int) {
+        iconFill.color = color
+        iconStroke.color = color
+        iconStroke.strokeWidth = s * 0.22f
+        iconStroke.strokeCap = Paint.Cap.ROUND
+        fun tri(tipX: Float, baseX: Float, h: Float = s * 0.8f) {
+            path.reset()
+            path.moveTo(baseX, cy - h); path.lineTo(baseX, cy + h); path.lineTo(tipX, cy); path.close()
+            canvas.drawPath(path, iconFill)
+        }
+        when (icon) {
+            Icon.PLAY -> tri(cx + s * 0.9f, cx - s * 0.6f, s)
+            Icon.PAUSE -> {
+                canvas.drawRect(cx - s * 0.75f, cy - s * 0.85f, cx - s * 0.2f, cy + s * 0.85f, iconFill)
+                canvas.drawRect(cx + s * 0.2f, cy - s * 0.85f, cx + s * 0.75f, cy + s * 0.85f, iconFill)
+            }
+            Icon.REWIND -> { tri(cx - s, cx); tri(cx, cx + s) }
+            Icon.FORWARD -> { tri(cx + s, cx); tri(cx, cx - s) }
+            Icon.PREV -> {
+                canvas.drawRect(cx - s * 0.9f, cy - s * 0.8f, cx - s * 0.62f, cy + s * 0.8f, iconFill)
+                tri(cx - s * 0.62f, cx + s * 0.8f)
+            }
+            Icon.NEXT -> {
+                canvas.drawRect(cx + s * 0.62f, cy - s * 0.8f, cx + s * 0.9f, cy + s * 0.8f, iconFill)
+                tri(cx + s * 0.62f, cx - s * 0.8f)
+            }
+            Icon.REPLAY -> {
+                val r = s * 0.7f
+                canvas.drawArc(RectF(cx - r, cy - r, cx + r, cy + r), -60f, 300f, false, iconStroke)
+                // 箭頭在弧線起點（右上方）
+                val a = Math.toRadians(-60.0)
+                val ax = cx + r * cos(a).toFloat()
+                val ay = cy + r * sin(a).toFloat()
+                path.reset()
+                path.moveTo(ax - s * 0.45f, ay - s * 0.2f); path.lineTo(ax + s * 0.2f, ay - s * 0.45f)
+                path.lineTo(ax + s * 0.1f, ay + s * 0.3f); path.close()
+                canvas.drawPath(path, iconFill)
+            }
+            Icon.RECENTER -> {
+                canvas.drawCircle(cx, cy, s * 0.6f, iconStroke)
+                canvas.drawCircle(cx, cy, s * 0.16f, iconFill)
+                for ((dx, dy) in listOf(1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)) {
+                    canvas.drawLine(cx + dx * s * 0.6f, cy + dy * s * 0.6f, cx + dx * s, cy + dy * s, iconStroke)
+                }
+            }
+            Icon.SETTINGS -> {
+                canvas.drawCircle(cx, cy, s * 0.5f, iconStroke)
+                iconStroke.strokeWidth = s * 0.28f
+                iconStroke.strokeCap = Paint.Cap.BUTT
+                for (k in 0 until 8) {
+                    val a = Math.toRadians(k * 45.0)
+                    val dx = cos(a).toFloat()
+                    val dy = sin(a).toFloat()
+                    canvas.drawLine(cx + dx * s * 0.6f, cy + dy * s * 0.6f, cx + dx * s * 0.95f, cy + dy * s * 0.95f, iconStroke)
+                }
+            }
+            Icon.EXIT -> {
+                val d = s * 0.7f
+                canvas.drawLine(cx - d, cy - d, cx + d, cy + d, iconStroke)
+                canvas.drawLine(cx - d, cy + d, cx + d, cy - d, iconStroke)
             }
         }
     }
