@@ -56,33 +56,33 @@ CI computes them from git and passes them to `app/build.gradle.kts` as the Gradl
 
 ## CI (.github/workflows/build.yml)
 
-- Triggers: every push (including tags), pull requests, and manual runs from the Actions page (`workflow_dispatch`).
-  Pushes and pull requests that change only `docs/` or `*.md` do not build. This rule does not apply to tags.
+- Triggers: every branch push, pull requests, and manual runs from the Actions page (`workflow_dispatch`). Tag pushes do not build (see [Releases](#releases)).
+  Pushes and pull requests that change only `docs/` or `*.md` do not build.
 - Dedupe: if an earlier build of the same commit has succeeded or is still running, the whole build is skipped (for example, a fast-forward merge into `main`).
-  Only earlier builds count, so two builds pushed at the same time do not skip each other. Tags and manual runs always build.
+  Only earlier builds count, so two builds pushed at the same time do not skip each other. Manual runs always build.
 - Steps: install JDK 21, the Android SDK, and the pinned Gradle version (with cache); validate the two shaders in `render/Shaders.kt`
   with `glslangValidator` (they compile only at app runtime, so Gradle cannot catch syntax errors); compute the version number;
   run `gradle testDebugUnitTest assembleDebug`; upload `app/build/outputs/apk/debug/*.apk` as the artifact `VR180Player-debug`.
 - Fixed signing key: when the secret `DEBUG_KEYSTORE_BASE64` is set, it is decoded to `~/.android/debug.keystore`, so every build has the same signature.
   For how to generate the key, see [README](../README.md#fixed-signing-key-optional).
 
-## Releases
+## Releases (.github/workflows/release.yml)
 
-When a `vX.Y.Z` tag is pushed, CI renames the APK to `VR180Player-X.Y.Z-debug.apk` after the build and attaches it to the GitHub Release of the same name
-(overwriting a file of the same name if the Release exists, or creating a pre-release if not). Without `DEBUG_KEYSTORE_BASE64` this step fails,
-because an APK with a different signature cannot be installed over the old version.
+A release reuses the APK that CI already built for the commit; nothing is compiled again.
 
-To attach your own notes, create the Release first and let it create the tag:
+1. Push the changes to `main` and wait for **Build APK** to pass.
+2. On the Actions page, choose **Release** › **Run workflow** on `main`. Enter the version `X.Y.Z`, optional notes (blank: GitHub generates them), and whether it is a pre-release (default yes).
+3. The workflow:
+   - stops if the version is not `X.Y.Z`, `vX.Y.Z` already exists, or the secret `DEBUG_KEYSTORE_BASE64` is missing (an APK with a different signature cannot be installed over the old version);
+   - finds the `VR180Player-debug` artifact uploaded by a successful Build APK run of the same commit, and stops if there is none
+     (the build failed or is still running, the commit changed only docs, or the artifact expired after 90 days);
+   - renames it to `VR180Player-X.Y.Z-debug.apk` and creates the tag `vX.Y.Z` and the Release on that commit.
 
-```bash
-gh release create vX.Y.Z --target <commit> --prerelease --title "vX.Y.Z (debug): …" --notes-file notes.md
-```
+Tags created by the workflow do not trigger Build APK, so each commit builds only once.
+Because the APK was built before the tag existed, its internal `versionName` is the development name of that commit (for example `0.1.16-dev.4`, shown only in the system's app info).
+`versionCode` still grows with every commit, so the APK installs over the previous release, and later builds count from the new tag.
 
-Creating the tag triggers CI, and the APK is attached automatically.
-
-Changes to release do not need a branch push and CI run first. Create the Release directly on the commit to release. The tag build both verifies (tests, shaders)
-and produces the APK. After it passes, fast-forward merge into `main`; the `main` build is skipped by dedupe. Each release builds only once.
-If the build fails, the Release has no APK. Fix it and release again with a new commit and a new version number.
+If a release needs different notes, edit the Release on GitHub afterwards. To redo a release, delete the Release and its tag first.
 
 ## Test tools
 

@@ -1,0 +1,83 @@
+# 發行：在 Actions 頁面選「Release」→「Run workflow」，輸入版本號。
+# 不重新編譯：直接拿 Build APK 為同一個 commit 編好的 APK，改名後建 tag 與 GitHub Release。
+# 這個 commit 的建置沒有成功（失敗、還在跑、只改文件沒建置）就停止，不會發出去。規則見 docs/development.md。
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 版本號 X.Y.Z（例如 0.1.17）
+        required: true
+      notes:
+        description: Release 說明（空白則由 GitHub 自動產生）
+        required: false
+        default: ''
+      prerelease:
+        description: 標成預先發行版
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write   # 建 tag 與 Release
+      actions: read     # 找建置紀錄、下載 APK
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: 檢查版本號
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::版本號要是 X.Y.Z，收到：$VERSION"; exit 1
+          fi
+          if gh release view "v$VERSION" > /dev/null 2>&1 ||
+             gh api "repos/$GH_REPO/git/ref/tags/v$VERSION" > /dev/null 2>&1; then
+            echo "::error::v$VERSION 已經存在"; exit 1
+          fi
+
+      # 沒有固定金鑰的 APK 不能覆蓋安裝舊版，不發布
+      - name: 檢查簽章金鑰
+        env:
+          HAS_KEY: ${{ secrets.DEBUG_KEYSTORE_BASE64 != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then echo "::error::缺少 DEBUG_KEYSTORE_BASE64，不發布"; exit 1; fi
+
+      - name: 找這個 commit 的建置結果
+        id: build
+        run: |
+          # 有上傳 APK 的那次才算（去重跳過的建置沒有 artifact）
+          run_id=$(gh api "repos/$GH_REPO/actions/artifacts?name=VR180Player-debug&per_page=100" \
+            -q "[.artifacts[] | select(.workflow_run.head_sha == \"$GITHUB_SHA\" and .expired == false)][0].workflow_run.id // empty")
+          if [ -z "$run_id" ]; then
+            echo "::error::$GITHUB_SHA 沒有可用的 APK：Build APK 還沒跑完、失敗，或這個 commit 只改了文件"; exit 1
+          fi
+          conclusion=$(gh run view "$run_id" --json conclusion -q .conclusion)
+          if [ "$conclusion" != success ]; then
+            echo "::error::建置 $run_id 的結果是 $conclusion，不發布"; exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "使用建置 $run_id 的 APK（commit $GITHUB_SHA）"
+
+      - name: 下載 APK 並改名
+        run: |
+          gh run download "${{ steps.build.outputs.run_id }}" -n VR180Player-debug -D apk
+          mv apk/app-debug.apk "VR180Player-$VERSION-debug.apk"
+
+      - name: 建立 Release
+        env:
+          NOTES: ${{ inputs.notes }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          args=(--target "$GITHUB_SHA" --title "v$VERSION（除錯版）")
+          if [ -n "$NOTES" ]; then args+=(--notes "$NOTES"); else args+=(--generate-notes); fi
+          [ "$PRERELEASE" = true ] && args+=(--prerelease)
+          gh release create "v$VERSION" "VR180Player-$VERSION-debug.apk" "${args[@]}"
