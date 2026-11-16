@@ -1,5 +1,6 @@
 package com.example.vr180.model
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
@@ -146,5 +147,34 @@ data class SmbConnection(
             o.optString("host"), o.optString("share"), o.optString("user"),
             o.optString("password"), o.optString("domain"),
         )
+    }
+}
+
+/** 首頁的一組 NAS 連線。name 空白時顯示 \\主機\分享。 */
+data class SmbProfile(val id: String, val name: String = "", val conn: SmbConnection = SmbConnection()) {
+    val label: String get() = name.ifBlank { "\\\\${conn.host}\\${conn.share}" }
+
+    fun toJson(): JSONObject = conn.toJson().put("id", id).put("name", name)
+
+    companion object {
+        /** 0.1.17 以前的 connection.json 升級成第一個 profile 時用的 id。 */
+        const val MIGRATED_ID = "migrated"
+
+        fun fromJson(o: JSONObject) = SmbProfile(o.optString("id"), o.optString("name"), SmbConnection.fromJson(o))
+
+        fun listToJson(list: List<SmbProfile>): JSONObject =
+            JSONObject().put("profiles", JSONArray().apply { list.forEach { put(it.toJson()) } })
+
+        /** 沒有 id 的項目（手動編輯造成）略過，避免之後無法修改或刪除。 */
+        fun listFromJson(o: JSONObject): List<SmbProfile> {
+            val arr = o.optJSONArray("profiles") ?: return emptyList()
+            return (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let(::fromJson)?.takeIf { it.id.isNotBlank() }
+            }
+        }
+
+        /** 舊版只存一組連線：有填主機才升級成 profile。 */
+        fun migrate(old: SmbConnection?): List<SmbProfile> =
+            if (old != null && old.host.isNotBlank()) listOf(SmbProfile(MIGRATED_ID, conn = old)) else emptyList()
     }
 }

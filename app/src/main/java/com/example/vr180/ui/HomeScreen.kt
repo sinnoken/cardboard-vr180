@@ -4,42 +4,35 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.vr180.R
-import com.example.vr180.Screen
 import com.example.vr180.data.ProfileStore
-import com.example.vr180.model.LensProfile
-import com.example.vr180.model.SmbConnection
-import com.example.vr180.model.displayName
+import com.example.vr180.model.SmbProfile
 import com.example.vr180.smb.LocalNetworkPermission
 import com.example.vr180.smb.SmbRepository
 import com.example.vr180.source.FileSource
@@ -49,41 +42,39 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** 首頁：影片來源清單（NAS 連線與本機資料夾），點一下就開。editNas(null) 是新增。 */
 @Composable
-fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (FileSource) -> Unit) {
-    val saved = remember { store.loadConnection() }
-    var host by remember { mutableStateOf(saved.host) }
-    var share by remember { mutableStateOf(saved.share) }
-    var user by remember { mutableStateOf(saved.user) }
-    var pass by remember { mutableStateOf(saved.password) }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+fun HomeScreen(store: ProfileStore, editNas: (String?) -> Unit, openSource: (FileSource) -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var profiles by remember { mutableStateOf(store.loadSmbProfiles()) }
+    var folders by remember { mutableStateOf(store.loadFolders()) }
+    var busyId by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<Pair<String, String>?>(null) }   // (來源 id, 訊息)
+    var pending by remember { mutableStateOf<SmbProfile?>(null) }            // 等權限回來再連線的那一組
 
-    fun connect() {
-        busy = true; error = null
-        val c = SmbConnection(host, share, user, pass)
+    fun connect(p: SmbProfile) {
+        busyId = p.id; error = null
         scope.launch {
             val r = withContext(Dispatchers.IO) {
                 runCatching {
-                    store.saveConnection(c)          // 先存：連線失敗時不用重打帳號密碼
-                    SmbRepository.configure(c)
-                    SmbRepository.list(c.host, c.share, "")
+                    SmbRepository.configure(p.conn)
+                    SmbRepository.list(p.conn.host, p.conn.share, "")
                 }
             }
-            busy = false
-            r.onSuccess { openSource(SmbFileSource(c)) }
-                .onFailure { error = context.getString(R.string.ui_home_connect_failed, friendlyError(context, it)) }
+            busyId = null
+            r.onSuccess { openSource(SmbFileSource(p.conn)) }
+                .onFailure { error = p.id to context.getString(R.string.ui_home_connect_failed, friendlyError(context, it)) }
         }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) connect()
-        else error = context.getString(R.string.ui_home_permission_needed)
+        val p = pending
+        pending = null
+        if (p == null) return@rememberLauncherForActivityResult
+        if (ok) connect(p) else error = p.id to context.getString(R.string.ui_home_permission_needed)
     }
 
-    var folders by remember { mutableStateOf(store.loadFolders()) }
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             val cr = context.contentResolver
@@ -98,110 +89,95 @@ fun HomeScreen(store: ProfileStore, navigate: (Screen) -> Unit, openSource: (Fil
         }
     }
 
-    val device = remember { store.loadDevice() }
-    var lens by remember { mutableStateOf(store.loadLenses().active) }
-
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(stringResource(R.string.ui_home_nas_title), style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(host, { host = it.trim() }, Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.ui_home_host)) }, singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-        OutlinedTextField(share, { share = it.trim() }, Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.ui_home_share)) }, singleLine = true)
-        OutlinedTextField(user, { user = it }, Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.ui_home_user)) }, singleLine = true)
-        OutlinedTextField(pass, { pass = it }, Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.ui_home_password)) }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-        Button(
-            enabled = !busy && host.isNotBlank() && share.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
-            onClick = {
-                if (LocalNetworkPermission.granted(context)) connect()
-                else permissionLauncher.launch(LocalNetworkPermission.NAME)
-            },
-        ) { Text(stringResource(if (busy) R.string.ui_home_connecting else R.string.ui_home_connect)) }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-
-        Spacer(Modifier.height(8.dp))
-        Text(stringResource(R.string.ui_home_local_title), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(R.string.ui_home_local_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
+        Text(stringResource(R.string.ui_home_sources_title), style = MaterialTheme.typography.titleMedium)
+        if (profiles.isEmpty() && folders.isEmpty()) {
+            Text(stringResource(R.string.ui_home_empty), style = MaterialTheme.typography.bodyMedium)
+        }
+        profiles.forEach { p ->
+            SourceRow(
+                icon = "🖧",
+                title = p.label,
+                detail = when {
+                    busyId == p.id -> stringResource(R.string.ui_home_connecting)
+                    p.name.isBlank() -> p.conn.user.ifBlank { stringResource(R.string.ui_home_guest) }
+                    else -> "\\\\${p.conn.host}\\${p.conn.share} · " +
+                        p.conn.user.ifBlank { stringResource(R.string.ui_home_guest) }
+                },
+                error = error?.takeIf { it.first == p.id }?.second,
+                enabled = busyId == null,
+                onClick = {
+                    if (LocalNetworkPermission.granted(context)) connect(p)
+                    else { pending = p; permissionLauncher.launch(LocalNetworkPermission.NAME) }
+                },
+                menu = listOf(
+                    stringResource(R.string.ui_edit) to { editNas(p.id) },
+                    stringResource(R.string.ui_delete) to {
+                        store.saveSmbProfiles(profiles.filter { it.id != p.id })
+                        profiles = store.loadSmbProfiles()
+                    },
+                ),
+            )
+        }
         folders.forEach { f ->
-            Card(Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("📁 ${f.name}", Modifier.weight(1f))
-                    TextButton(onClick = {
-                        openSource(LocalFileSource(context, Uri.parse(f.uri), f.name))
-                    }) { Text(stringResource(R.string.ui_open)) }
-                    TextButton(onClick = {
-                        runCatching {
-                            context.contentResolver.releasePersistableUriPermission(Uri.parse(f.uri),
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-                        }
-                        store.saveFolders(folders.filter { it.uri != f.uri })
-                        folders = store.loadFolders()
-                    }) { Text(stringResource(R.string.ui_remove)) }
-                }
-            }
+            SourceRow(
+                icon = "📁",
+                title = f.name,
+                detail = stringResource(R.string.ui_home_local),
+                error = null,
+                enabled = busyId == null,
+                onClick = { openSource(LocalFileSource(context, Uri.parse(f.uri), f.name)) },
+                menu = listOf(stringResource(R.string.ui_remove) to {
+                    runCatching {
+                        context.contentResolver.releasePersistableUriPermission(Uri.parse(f.uri),
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    }
+                    store.saveFolders(folders.filter { it.uri != f.uri })
+                    folders = store.loadFolders()
+                }),
+            )
         }
-        OutlinedButton(modifier = Modifier.fillMaxWidth(), onClick = { pickFolder.launch(null) }) {
-            Text(stringResource(R.string.ui_home_add_folder))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { editNas(null) }) { Text(stringResource(R.string.ui_home_add_nas)) }
+            OutlinedButton(onClick = { pickFolder.launch(null) }) { Text(stringResource(R.string.ui_home_add_folder)) }
         }
-
-        Spacer(Modifier.height(8.dp))
-        Text(stringResource(R.string.ui_home_setup_title), style = MaterialTheme.typography.titleMedium)
-        SetupCard(stringResource(R.string.ui_home_calib_title),
-            if (device.pxPerMm > 0f) stringResource(R.string.ui_home_calib_done, device.pxPerMm)
-            else stringResource(R.string.ui_home_calib_none),
-        ) { navigate(Screen.SCREEN_CALIB) }
-        // 漂移的預設值是 0；實際量測幾乎不可能剛好是 0.0，所以 0 就代表還沒檢測過
-        val drift = if (device.yawDriftDegPerSec == 0f) stringResource(R.string.ui_home_drift_none)
-            else stringResource(R.string.ui_home_drift, device.yawDriftDegPerSec * 60f)
-        SetupCard(stringResource(R.string.ui_home_gyro_title),
-            stringResource(R.string.ui_home_gyro_detail, drift, device.predictionMs),
-        ) { navigate(Screen.GYRO) }
-        val usingDefault = lens.id == LensProfile.CARDBOARD_DEFAULT_ID
-        SetupCard(
-            stringResource(R.string.ui_home_lens_title),
-            if (usingDefault) stringResource(R.string.ui_home_lens_default)
-            else stringResource(R.string.ui_home_lens_in_use, lens.displayName(context)),
-            buttonText = stringResource(R.string.ui_home_lens_choose),
-            secondaryText = if (usingDefault) null else stringResource(R.string.ui_home_lens_use_default),
-            onSecondary = {
-                store.activate(LensProfile.CARDBOARD_DEFAULT_ID)
-                lens = store.loadLenses().active
-            },
-        ) { navigate(Screen.LENSES) }
-        SetupCard(
-            stringResource(R.string.ui_home_keytest_title),
-            stringResource(R.string.ui_home_keytest_detail),
-        ) { navigate(Screen.KEY_TEST) }
+        Text(stringResource(R.string.ui_home_local_hint), style = MaterialTheme.typography.bodySmall)
     }
 }
 
+/** 來源清單的一列：點一下開啟，長按叫出 menu。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SetupCard(
+private fun SourceRow(
+    icon: String,
     title: String,
     detail: String,
-    buttonText: String? = null,              // null = 「開啟」
-    secondaryText: String? = null,
-    onSecondary: () -> Unit = {},
+    error: String?,
+    enabled: Boolean,
     onClick: () -> Unit,
+    menu: List<Pair<String, () -> Unit>>,
 ) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(detail, style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onClick) { Text(buttonText ?: stringResource(R.string.ui_open)) }
-                secondaryText?.let { TextButton(onClick = onSecondary) { Text(it) } }
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Card(
+            Modifier.fillMaxWidth().combinedClickable(
+                enabled = enabled,
+                onClick = onClick,
+                onLongClick = { menuOpen = true },
+            ),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("$icon $title", style = MaterialTheme.typography.titleSmall)
+                Text(detail, style = MaterialTheme.typography.bodySmall)
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            menu.forEach { (label, action) ->
+                DropdownMenuItem(text = { Text(label) }, onClick = { menuOpen = false; action() })
             }
         }
     }

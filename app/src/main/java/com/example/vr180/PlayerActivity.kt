@@ -2,6 +2,7 @@ package com.example.vr180
 
 import android.hardware.input.InputManager
 import android.media.AudioManager
+import android.net.Uri
 import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
@@ -200,7 +201,14 @@ class PlayerActivity : ComponentActivity() {
             message = getString(R.string.player_no_head_tracking)
         }
         // 程序被系統回收後直接回到播放器時，SmbRepository 是空的；不設定就會被當成「連不到 NAS」
-        if (uris.any { it.startsWith("smb:") }) SmbRepository.configure(store.loadConnection())
+        // 有好幾組連線時，用影片網址的主機與分享資料夾找出對應的那一組；瀏覽畫面已經連上的就沿用
+        uris.firstOrNull { it.startsWith("smb:") }?.let { Uri.parse(it) }
+            ?.takeUnless { SmbRepository.isConfiguredFor(it.host, it.pathSegments.firstOrNull()) }
+            ?.let { u ->
+                store.loadSmbProfiles()
+                    .firstOrNull { it.conn.host == u.host && it.conn.share == u.pathSegments.firstOrNull() }
+                    ?.let { SmbRepository.configure(it.conn) }
+            }
         if (uris.any { it.startsWith("smb:") } && !LocalNetworkPermission.granted(this)) {
             message = getString(R.string.player_no_local_network_permission)
         }

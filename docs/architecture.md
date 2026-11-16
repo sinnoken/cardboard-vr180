@@ -120,8 +120,8 @@ Cross-thread rules:
 - When opening an smb file, smbj errors are classified by NT status code: `STATUS_OBJECT_NAME_NOT_FOUND`/`STATUS_OBJECT_PATH_NOT_FOUND`
   → `IO_FILE_NOT_FOUND`, `STATUS_ACCESS_DENIED`/`STATUS_LOGON_FAILURE` → `IO_NO_PERMISSION`,
   others → `IO_NETWORK_CONNECTION_FAILED`. The player shows the cause based on the error code.
-- When the player is created and there is an `smb://` URI, it configures `SmbRepository` from `connection.json`: after the system kills the process and
-  the user returns straight to the player, the singleton is empty.
+- When the player is created and there is an `smb://` URI, it configures `SmbRepository` from the `connections.json` entry whose host and share match the URI, unless the repository is already
+  connected to that host and share (another account may be in use): after the system kills the process and the user returns straight to the player, the singleton is empty.
 - `SmbRepository` smbj settings: multi-protocol negotiation, 8 MiB read buffer, 30-second timeout, full BouncyCastle.
   Before connecting, it tries TCP 445 with a 6-second timeout, so a wrong address does not wait 30 seconds. A blank user name logs in as guest.
 

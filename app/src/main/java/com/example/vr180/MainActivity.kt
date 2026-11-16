@@ -36,14 +36,24 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import com.example.vr180.ui.LensProfilesScreen
 import com.example.vr180.ui.ScreenCalibScreen
+import com.example.vr180.ui.SettingsScreen
+import com.example.vr180.ui.SmbEditScreen
 
 enum class Screen(@StringRes val titleRes: Int) {
     HOME(R.string.app_name),
     BROWSER(R.string.ui_screen_browser),
+    SMB_EDIT(R.string.ui_home_nas_title),
+    SETTINGS(R.string.ui_screen_settings),
     SCREEN_CALIB(R.string.ui_screen_calib),
     GYRO(R.string.ui_screen_gyro),
     LENSES(R.string.ui_screen_lenses),
-    KEY_TEST(R.string.ui_screen_key_test),
+    KEY_TEST(R.string.ui_screen_key_test);
+
+    /** 返回鍵回到哪一頁：設定裡的子頁回設定，其他回首頁。 */
+    val parent: Screen get() = when (this) {
+        SCREEN_CALIB, GYRO, LENSES, KEY_TEST -> SETTINGS
+        else -> HOME
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -77,14 +87,20 @@ class MainActivity : ComponentActivity() {
 private fun App(store: ProfileStore) {
     var screen by remember { mutableStateOf(Screen.HOME) }
     var source by remember { mutableStateOf<FileSource?>(null) }
-    BackHandler(enabled = screen != Screen.HOME) { screen = Screen.HOME }
+    var editingNas by remember { mutableStateOf<String?>(null) }
+    BackHandler(enabled = screen != Screen.HOME) { screen = screen.parent }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (screen == Screen.BROWSER) source?.label.orEmpty() else stringResource(screen.titleRes)) },
                 navigationIcon = {
-                    if (screen != Screen.HOME) TextButton(onClick = { screen = Screen.HOME }) { Text(stringResource(R.string.ui_nav_back)) }
+                    if (screen != Screen.HOME) TextButton(onClick = { screen = screen.parent }) { Text(stringResource(R.string.ui_nav_back)) }
+                },
+                actions = {
+                    if (screen == Screen.HOME) TextButton(onClick = { screen = Screen.SETTINGS }) {
+                        Text(stringResource(R.string.ui_home_settings))
+                    }
                 },
             )
         },
@@ -93,13 +109,15 @@ private fun App(store: ProfileStore) {
             when (screen) {
                 Screen.HOME -> HomeScreen(
                     store,
-                    navigate = { screen = it },
+                    editNas = { editingNas = it; screen = Screen.SMB_EDIT },
                     openSource = { source = it; screen = Screen.BROWSER },
                 )
                 Screen.BROWSER -> source?.let { BrowserScreen(it, store) }
+                Screen.SMB_EDIT -> SmbEditScreen(store, editingNas) { screen = Screen.HOME }
+                Screen.SETTINGS -> SettingsScreen(store, navigate = { screen = it })
                 Screen.SCREEN_CALIB -> ScreenCalibScreen(store)
                 Screen.GYRO -> GyroTestScreen(store)
-                Screen.LENSES -> LensProfilesScreen(store) { screen = Screen.HOME }
+                Screen.LENSES -> LensProfilesScreen(store) { screen = Screen.SETTINGS }
                 Screen.KEY_TEST -> KeyTestScreen(store)
             }
         }

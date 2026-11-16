@@ -42,7 +42,7 @@ Calibration of the phone itself (`DeviceCalib`).
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `pxPerMm` | number | `0` | Screen pixels per millimeter. `≤ 0` means uncalibrated; the system-reported density `(xdpi + ydpi) / 2 / 25.4` is used instead |
-| `yawDriftDegPerSec` | number | `0` | Yaw drift rate measured at rest (degrees/second), cancelled linearly during playback. `0` shows as "Drift not checked yet" on the home screen |
+| `yawDriftDegPerSec` | number | `0` | Yaw drift rate measured at rest (degrees/second), cancelled linearly during playback. `0` shows as "Drift not checked yet" in Settings |
 | `predictionMs` | number | `25` | How far ahead to predict head orientation (milliseconds) |
 | `fullRecenter` | boolean | `false` | Recenter mode: `false` horizontal only, `true` full orientation |
 
@@ -79,7 +79,7 @@ Read rules:
 
 When written:
 
-- "Use Cardboard defaults" on the home screen, or selecting a profile or "Use Cardboard defaults" on the viewer profiles page: changes only `activeId`.
+- "Use Cardboard defaults" in Settings, or selecting a profile or "Use Cardboard defaults" on the viewer profiles page: changes only `activeId`.
 - "Delete" on the viewer profiles page: removes that profile (the active profile cannot be deleted).
 - "Save" in VR lens calibration: if the active profile is a preset, adds a new entry with a new random UUID and the name "My viewer (based on <preset name>)";
   otherwise overwrites the entry with the same id. In both cases `activeId` is set to it.
@@ -118,21 +118,29 @@ Defined in `LensProfile.presets()` and not saved. `offsetXMm` and `tiltDeg` are 
 | `preset-cardboard-v2` | Cardboard v2 (approx.) | 63.9 | 39.3 | 31 | `BOTTOM` | 0.34 | 0.55 | 50 |
 | `preset-generic-center` | Generic (screen-centered) | 63 | 40 | 0 | `CENTER` | 0.30 | 0.20 | 50 |
 
-## connection.json
+## connections.json
 
-SMB connection details for the NAS (`SmbConnection`).
+Saved NAS connections (`SmbProfile`), in the order shown on the home screen.
+
+```json
+{ "profiles": [ { "id": "…", "name": "Living room", "host": "192.168.1.20", "share": "video", "user": "me", "password": "…", "domain": "" } ] }
+```
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `host` | string | `""` | Host IP or name |
-| `share` | string | `""` | Share name |
-| `user` | string | `""` | User name; blank (including whitespace only) logs in as guest |
-| `password` | string | `""` | Password, in **plain text** |
-| `domain` | string | `""` | Domain |
+| `profiles` | array of object | `[]` | Connections, in the order added |
+| `profiles[].id` | string | — | Unique ID (random UUID; `"migrated"` for the entry upgraded from `connection.json`). Entries without an ID are skipped |
+| `profiles[].name` | string | `""` | Display name; blank shows `\\host\share` |
+| `profiles[].host` | string | `""` | Host IP or name ("Search local network" fills in the IPv4 address) |
+| `profiles[].share` | string | `""` | Share name |
+| `profiles[].user` | string | `""` | User name; blank (including whitespace only) logs in as guest |
+| `profiles[].password` | string | `""` | Password, in **plain text** |
+| `profiles[].domain` | string | `""` | Domain. There is no input field; a value written into the file by hand is kept on save |
 
-- Written when "Connect and browse" is pressed on the home screen, before connecting (kept even if the connection fails).
-- The home screen has no domain field, so `domain` is always written as `""`. A domain written into the file by hand is cleared on the next connection.
-- `host` and `share` are trimmed on input; `user` and `password` are stored as is.
+- Written when a connection is saved or deleted. Connecting does not write the file.
+- `host`, `share` and `name` are trimmed on save; `user` and `password` are stored as is.
+- Upgrading from 0.1.16 or earlier: while `connections.json` does not exist, the old `connection.json` (one connection with the same fields as a profile, without `id` and `name`)
+  is read as a single profile with ID `"migrated"` if its `host` is not blank. The first save writes `connections.json`; the old file is left in place and no longer read.
 
 ## folders.json
 

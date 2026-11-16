@@ -52,7 +52,7 @@ Local folders give access only to the folders you pick. No storage permission is
 
 ## First-time setup
 
-All setup steps are optional. You can pick a video and play it right away. On playback, put on the viewer, look straight ahead, and press any button or tap the screen to start
+All setup steps are optional and live under **⚙ Settings** at the top right of the home screen. You can pick a video and play it right away. On playback, put on the viewer, look straight ahead, and press any button or tap the screen to start
 (pressing Back at this point exits playback).
 
 1. **Screen size calibration (optional)**: Hold a credit card upright against the screen and adjust until all four edges line up. Without calibration, the screen density reported by the phone is used.
@@ -60,7 +60,7 @@ All setup steps are optional. You can pick a video and play it right away. On pl
    The same page has "Motion prediction": raise it if the image lags behind when you turn your head; lower it if the image overshoots when you stop.
 3. **Viewer profiles (can be skipped)**: By default, Cardboard defaults are used (the same as Cardboard SDK without a scanned viewer).
    Presets are never modified: if you start from a preset, calibrate in VR, and save, the result is saved as a new "My viewer (based on …)" profile and activated.
-   Later calibrations update this profile directly. If you mess it up, switch back to the defaults on the home screen at any time.
+   Later calibrations update this profile directly. If you mess it up, switch back to the defaults in Settings at any time.
 4. Play any video, open the menu › **Settings** › **Lens calibration** (do this wearing the viewer):
    - Centering (the first pattern when calibration opens): The phone is not always centered in the viewer, so you move the image instead of the phone.
      Close one eye at a time. Adjust "Horizontal offset" and "Vertical position" so the center of the concentric circles sits in the middle of the lens, and the lens edge cuts off the same amount of the yellow frame on all four sides.
@@ -79,7 +79,7 @@ The app UI follows the phone's system language: Traditional Chinese when the sys
 
 The menu is a panel fixed in space. On calibration pages the panel sits below your line of sight, so it does not cover the test pattern in the center.
 
-There are two button layouts. Switch them on the home screen under "Controller test". The default is "Auto": controllers whose name contains MOCUTE use the one-hand layout; all others use the standard layout.
+There are two button layouts. Switch them in Settings under "Controller test". The default is "Auto": controllers whose name contains MOCUTE use the one-hand layout; all others use the standard layout.
 If another one-hand controller is not detected automatically (pressing the trigger shows both A and R2 on the test page), select "One-hand controller" manually.
 The controller test page shows every signal the controller sends and the action the app maps it to, in real time. This page captures all buttons; to leave, press "Back" at the top left.
 
@@ -156,14 +156,23 @@ Bluetooth gamepads, D-pad remotes, media remotes, and keyboards all work. Pair t
 
 ## Video sources
 
+The home screen lists your sources: saved NAS connections and local folders. Tap one to open its video list; long-press to edit, delete, or remove it.
+If a NAS connection fails, the reason appears under that row.
+
 ### NAS (SMB)
 
-On the home screen, enter the host (IP or name), share, user name, and password, then press "Connect and browse". A blank user name logs in as guest.
-The connection details are saved as soon as you press connect, so you do not need to retype them if the connection fails.
+"+ NAS" opens the connection page. You can save several connections, for example different shares or different accounts on the same NAS.
+
+- **Search local network** lists NAS devices that announce themselves on the LAN (Synology and QNAP usually do). Tap one to fill in its IP.
+  Windows shares and some NAS models do not announce themselves; type the IP or name instead. If the NAS gets a new IP later, edit the connection and search again.
+- Fill in the share, user name, and password. A blank user name logs in as guest.
+- The name is optional; without one, the row shows `\\host\share`.
+
+Connections from 0.1.16 and earlier are kept: the single saved connection becomes the first entry.
 
 ### Local folders
 
-"Add local folder" on the home screen opens the system folder picker. Phone storage, SD cards, and USB drives all work.
+"+ Local folder" on the home screen opens the system folder picker. Phone storage, SD cards, and USB drives all work.
 After you grant access once, the app remembers it. The app can access only the selected folders, needs no storage permission, and needs no network for playback.
 If a folder loses its access permission, remove it and add it again.
 

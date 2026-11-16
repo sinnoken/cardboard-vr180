@@ -27,4 +27,30 @@ class ProfilesJsonTest {
         val c = SmbConnection("nas.local", "video", "me", "secret")
         assertEquals(c, SmbConnection.fromJson(JSONObject(c.toJson().toString())))
     }
+
+    @Test fun smbProfilesRoundTrip() {
+        val list = listOf(
+            SmbProfile("a", "客廳", SmbConnection("192.168.1.20", "video", "me", "pw")),
+            SmbProfile("b", conn = SmbConnection("192.168.1.20", "kids")),
+        )
+        assertEquals(list, SmbProfile.listFromJson(JSONObject(SmbProfile.listToJson(list).toString())))
+        assertEquals(emptyList<SmbProfile>(), SmbProfile.listFromJson(JSONObject()))
+    }
+
+    @Test fun smbProfileWithoutIdIsSkipped() {
+        val o = JSONObject().put("profiles", org.json.JSONArray().put(JSONObject().put("host", "x")))
+        assertEquals(emptyList<SmbProfile>(), SmbProfile.listFromJson(o))
+    }
+
+    @Test fun oldSingleConnectionMigrates() {
+        val old = SmbConnection("nas", "video", "me", "pw")
+        assertEquals(listOf(SmbProfile(SmbProfile.MIGRATED_ID, conn = old)), SmbProfile.migrate(old))
+        assertEquals(emptyList<SmbProfile>(), SmbProfile.migrate(SmbConnection()))
+        assertEquals(emptyList<SmbProfile>(), SmbProfile.migrate(null))
+    }
+
+    @Test fun smbProfileLabelFallsBackToPath() {
+        assertEquals("\\\\nas\\video", SmbProfile("a", conn = SmbConnection("nas", "video")).label)
+        assertEquals("客廳", SmbProfile("a", "客廳", SmbConnection("nas", "video")).label)
+    }
 }

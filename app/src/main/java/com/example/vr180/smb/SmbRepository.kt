@@ -40,6 +40,10 @@ object SmbRepository {
     private var session: Session? = null
     private val shares = HashMap<String, DiskShare>()
 
+    /** 目前的連線是不是這個主機與分享資料夾（同一處可能存了不同帳號，已經連上的不要換掉）。 */
+    fun isConfiguredFor(host: String?, share: String?): Boolean =
+        conn?.let { it.host == host && it.share == share } ?: false
+
     fun configure(c: SmbConnection) {
         // 播放器在主執行緒呼叫：設定沒變（幾乎都是這樣）就不碰鎖，免得 NAS 很慢時卡在另一條執行緒的連線上
         if (c == conn) return

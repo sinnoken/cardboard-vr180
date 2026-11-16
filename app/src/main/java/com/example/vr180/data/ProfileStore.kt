@@ -7,6 +7,7 @@ import com.example.vr180.model.DeviceCalib
 import com.example.vr180.model.LensProfile
 import com.example.vr180.model.SceneCalib
 import com.example.vr180.model.SmbConnection
+import com.example.vr180.model.SmbProfile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -81,10 +82,12 @@ class ProfileStore(context: Context) {
 
     @Synchronized fun saveBrowseOptions(b: BrowseOptions) = write("browse.json", b.toJson())
 
-    @Synchronized fun loadConnection(): SmbConnection =
-        read("connection.json")?.let(SmbConnection::fromJson) ?: SmbConnection()
+    /** NAS 連線清單。還沒有 connections.json 時，從舊版的 connection.json 升級（舊檔留著不刪）。 */
+    @Synchronized fun loadSmbProfiles(): List<SmbProfile> =
+        read("connections.json")?.let(SmbProfile::listFromJson)
+            ?: SmbProfile.migrate(read("connection.json")?.let(SmbConnection::fromJson))
 
-    @Synchronized fun saveConnection(c: SmbConnection) = write("connection.json", c.toJson())
+    @Synchronized fun saveSmbProfiles(list: List<SmbProfile>) = write("connections.json", SmbProfile.listToJson(list))
 
     /** 使用者授權過的本機資料夾（SAF tree URI）。 */
     data class LocalFolder(val uri: String, val name: String)
