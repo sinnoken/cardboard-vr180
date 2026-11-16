@@ -72,7 +72,12 @@ CI computes them from git and passes them to `app/build.gradle.kts` as the Gradl
 A release reuses the APK that CI already built for the commit; nothing is compiled again.
 
 1. Push the changes to `main` and wait for **Build APK** to pass.
-2. On the Actions page, choose **Release** › **Run workflow** on `main`. Enter the version `X.Y.Z`, optional notes (blank: GitHub generates them), and whether it is a pre-release (default yes).
+2. On the Actions page, choose **Release** › **Run workflow** on `main`. Every field is optional:
+   - **bump** (default `patch`) and **version**: a blank version is computed from the latest `vX.Y.Z` tag by bumping the chosen part
+     (`v0.1.16` → patch `0.1.17`, minor `0.2.0`, major `1.0.0`; `0.0.1` etc. when there is no tag). A filled-in version is used as is.
+   - **notes**: blank notes are built from the commit subjects since the previous tag: `feat:` under "New", `fix:` under "Fixes"
+     (the type prefix is removed; `ci:`, `docs:`, `chore:` are left out), plus a compare link. With neither, the notes say "Maintenance release.".
+   - **prerelease** (default yes).
 3. The workflow:
    - stops if the version is not `X.Y.Z`, `vX.Y.Z` already exists, or the secret `DEBUG_KEYSTORE_BASE64` is missing (an APK with a different signature cannot be installed over the old version);
    - finds the `VR180Player-debug` artifact uploaded by a successful Build APK run of the same commit, and stops if there is none
