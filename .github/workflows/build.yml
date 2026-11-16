@@ -62,10 +62,10 @@ jobs:
       - name: 安裝 Android SDK（並接受授權，缺少的平台由 Gradle 自動下載）
         uses: android-actions/setup-android@v4
 
-      - name: 安裝 Gradle 9.9.0（含快取）
+      - name: 安裝 Gradle 9.9.1（含快取）
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: '9.9.0'
+          gradle-version: '9.9.1'
 
       # 著色器在 App 執行時才編譯，Gradle 建置抓不到語法錯誤：這裡先用 Khronos 的 glslang 驗證
       - name: 驗證著色器（glslang）
