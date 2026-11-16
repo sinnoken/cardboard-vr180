@@ -157,7 +157,7 @@ data class SmbProfile(val id: String, val name: String = "", val conn: SmbConnec
     fun toJson(): JSONObject = conn.toJson().put("id", id).put("name", name)
 
     companion object {
-        /** 0.1.17 以前的 connection.json 升級成第一個 profile 時用的 id。 */
+        /** 0.1.16 以前的 connection.json 升級成第一個 profile 時用的 id。 */
         const val MIGRATED_ID = "migrated"
 
         fun fromJson(o: JSONObject) = SmbProfile(o.optString("id"), o.optString("name"), SmbConnection.fromJson(o))

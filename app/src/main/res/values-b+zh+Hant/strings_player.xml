@@ -72,6 +72,7 @@
     <string name="player_list_separator">、</string>
     <string name="player_no_head_tracking">這支手機找不到頭部追蹤感測器，畫面不會跟著轉頭</string>
     <string name="player_no_local_network_permission">缺少區域網路權限，無法讀取 NAS。請回主畫面重新連線以授權。</string>
+    <string name="player_nas_connection_missing">這組 NAS 連線已被修改或刪除，請回清單重新開啟影片。</string>
     <string name="player_exceeds_decoder">超出硬體解碼器宣告的能力，仍嘗試播放</string>
     <string name="player_decoder_unsupported">硬體解碼器宣告不支援此解析度或格式</string>
     <string name="player_fallback_variant">%1$s 無法硬解（%2$s），改播較低解析度</string>

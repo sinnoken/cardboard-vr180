@@ -82,10 +82,13 @@ class ProfileStore(context: Context) {
 
     @Synchronized fun saveBrowseOptions(b: BrowseOptions) = write("browse.json", b.toJson())
 
-    /** NAS 連線清單。還沒有 connections.json 時，從舊版的 connection.json 升級（舊檔留著不刪）。 */
+    /**
+     * NAS 連線清單。connections.json 不存在時，從舊版的 connection.json 升級（舊檔留著不刪）；
+     * 檔案存在但損毀時回傳空清單，不再升級，免得已刪除的舊連線又出現。
+     */
     @Synchronized fun loadSmbProfiles(): List<SmbProfile> =
-        read("connections.json")?.let(SmbProfile::listFromJson)
-            ?: SmbProfile.migrate(read("connection.json")?.let(SmbConnection::fromJson))
+        if (File(dir, "connections.json").exists()) read("connections.json")?.let(SmbProfile::listFromJson).orEmpty()
+        else SmbProfile.migrate(read("connection.json")?.let(SmbConnection::fromJson))
 
     @Synchronized fun saveSmbProfiles(list: List<SmbProfile>) = write("connections.json", SmbProfile.listToJson(list))
 

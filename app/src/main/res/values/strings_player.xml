@@ -72,6 +72,7 @@
     <string name="player_list_separator">", "</string>
     <string name="player_no_head_tracking">This phone has no head-tracking sensor; the view won\'t follow your head.</string>
     <string name="player_no_local_network_permission">Local network permission is missing, so the NAS can\'t be read. Go back to the home screen and reconnect to grant it.</string>
+    <string name="player_nas_connection_missing">This NAS connection was changed or deleted. Go back and open the video from the list again.</string>
     <string name="player_exceeds_decoder">Beyond the hardware decoder\'s declared limits; trying anyway</string>
     <string name="player_decoder_unsupported">hardware decoder reports this resolution or format as unsupported</string>
     <string name="player_fallback_variant">%1$s can\'t be hardware-decoded (%2$s); switching to a lower resolution</string>

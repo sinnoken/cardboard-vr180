@@ -139,7 +139,7 @@ Saved NAS connections (`SmbProfile`), in the order shown on the home screen.
 
 - Written when a connection is saved or deleted. Connecting does not write the file.
 - `host`, `share` and `name` are trimmed on save; `user` and `password` are stored as is.
-- Upgrading from 0.1.16 or earlier: while `connections.json` does not exist, the old `connection.json` (one connection with the same fields as a profile, without `id` and `name`)
+- Upgrading from 0.1.16 or earlier: only while `connections.json` does not exist (a corrupt file reads as an empty list), the old `connection.json` (one connection with the same fields as a profile, without `id` and `name`)
   is read as a single profile with ID `"migrated"` if its `host` is not blank. The first save writes `connections.json`; the old file is left in place and no longer read.
 
 ## folders.json

@@ -21,14 +21,16 @@ HeadTracker ──▶ VrRenderer shader: screen pixel → lens distortion correc
 
 | File | Responsibility |
 |---|---|
-| `MainActivity.kt` | Compose screens for settings and browsing (switched by the `Screen` enum, no navigation library); captures all input events while the controller test page is open |
+| `MainActivity.kt` | Hosts the Compose screens, switched by the `Screen` enum (no navigation library). Back goes to `Screen.parent`: pages under Settings return to Settings, the others to the home screen. Captures all input events while the controller test page is open |
+| `ui/HomeScreen.kt`, `ui/SmbEditScreen.kt`, `ui/SettingsScreen.kt` | Home: video sources (NAS connections and local folders). NAS connection page with local-network search. Settings: the optional setup pages |
 | `PlayerActivity.kt` | VR playback screen: creates ExoPlayer and GLSurfaceView, input dispatch, VR menu pages, scene calibration read/write |
-| `model/Profiles.kt` | `LensProfile`, `DeviceCalib`, `SceneCalib`, `SmbConnection`, and their JSON conversion |
+| `model/Profiles.kt` | `LensProfile`, `DeviceCalib`, `SceneCalib`, `SmbConnection`, `SmbProfile`, and their JSON conversion |
 | `data/ProfileStore.kt` | Reads and writes all settings files in the app's private directory |
 | `source/FileSource.kt` | Video source interface `FileSource`, implemented by `SmbFileSource` and `LocalFileSource` (SAF) |
 | `source/Sidecar.kt` | Scene calibration file location `SidecarRef` and read/write `SidecarIo` |
 | `smb/SmbRepository.kt` | SMB connection to a single NAS (smbj): list directories, open files, read/write small files, build `smb://` URIs |
 | `smb/SmbDataSource.kt` | ExoPlayer data source for SMB |
+| `smb/SmbDiscovery.kt` | Finds hosts announcing `_smb._tcp` over mDNS (NsdManager) for the NAS connection page |
 | `smb/LocalNetworkPermission.kt` | Runtime permission check for `ACCESS_LOCAL_NETWORK` from Android 17 |
 | `player/RoutingDataSource.kt` | Sends `smb://` to `SmbDataSource` and `content://` to `ContentDataSource`; other schemes throw `IOException` |
 | `player/HardwareOnly.kt` | `MediaCodecSelector`: keeps only hardware-accelerated video decoders; audio is not filtered |
@@ -69,6 +71,9 @@ Cross-thread rules:
 - All `ProfileStore` methods are `@Synchronized`; both the main-thread screens and the player's `io` thread call them.
 - `SmbRepository` is an app-wide singleton that keeps only one NAS connection. `configure()`, `share()`, and `closeAll()` are
   `@Synchronized`; listing and read/write run on the caller's background thread.
+- `SmbDiscovery` is created per search and used on the main thread; NsdManager callbacks are posted to the main thread.
+  Services are resolved one at a time (older systems allow only one active resolve), and the Wi-Fi multicast lock is held only while searching.
+- When the player starts and no saved connection matches the video's host and share (it was edited or deleted meanwhile), it shows a message instead of connecting.
 
 ## Playback data flow
 
@@ -122,6 +127,7 @@ Cross-thread rules:
   others → `IO_NETWORK_CONNECTION_FAILED`. The player shows the cause based on the error code.
 - When the player is created and there is an `smb://` URI, it configures `SmbRepository` from the `connections.json` entry whose host and share match the URI, unless the repository is already
   connected to that host and share (another account may be in use): after the system kills the process and the user returns straight to the player, the singleton is empty.
+  If no entry matches, it does not connect and shows a message (see the threading section).
 - `SmbRepository` smbj settings: multi-protocol negotiation, 8 MiB read buffer, 30-second timeout, full BouncyCastle.
   Before connecting, it tries TCP 445 with a 6-second timeout, so a wrong address does not wait 30 seconds. A blank user name logs in as guest.
 

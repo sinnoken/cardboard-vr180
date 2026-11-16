@@ -78,6 +78,7 @@ class SmbDiscovery(context: Context, private val onFound: (Found) -> Unit) {
                 val addrs: List<InetAddress> = if (Build.VERSION.SDK_INT >= 34) s.hostAddresses else listOfNotNull(s.host)
                 // 只用 IPv4：IPv6 鏈路本地位址需要介面編號，SMB 連線用不了
                 val ip = addrs.firstOrNull { it is Inet4Address }?.hostAddress
+                if (ip == null) Log.w(TAG, "${s.serviceName}: no IPv4 address, skipped")
                 main.post {
                     resolving = false
                     if (running && ip != null && reported.add(ip)) onFound(Found(s.serviceName, ip))
