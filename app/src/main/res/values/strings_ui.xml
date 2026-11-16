@@ -58,14 +58,14 @@
     <string name="ui_sort_date">Date</string>
     <string name="ui_sort_size">Size</string>
     <string name="ui_browser_include_subfolders">Include subfolders</string>
-    <string name="ui_browser_hide_small">Hide under 100 MB</string>
+    <string name="ui_browser_hide_small">Hide under 50 MB</string>
     <string name="ui_browser_scanned">Folders read: %1$d…</string>
     <string name="ui_browser_load_failed">Couldn\'t load: %1$s</string>
     <string name="ui_browser_up">Up one level</string>
     <string name="ui_browser_up_row">‹ Up one level</string>
     <string name="ui_browser_skipped">Skipped subfolders that couldn\'t be read: %1$d.</string>
     <string name="ui_browser_empty">No videos here.</string>
-    <string name="ui_browser_empty_hidden">No videos here (videos under 100 MB are hidden).</string>
+    <string name="ui_browser_empty_hidden">No videos here (videos under 50 MB are hidden).</string>
     <string name="ui_variant_original">Original</string>
     <string name="ui_gyro_moved">The phone moved during the check. Lay it flat on a table, don\'t touch it, and try again.</string>
     <string name="ui_gyro_no_samples">Not enough samples. This phone may not provide a Game Rotation Vector sensor.</string>

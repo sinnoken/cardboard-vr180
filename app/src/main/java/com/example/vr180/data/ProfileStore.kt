@@ -35,29 +35,51 @@ class ProfileStore(context: Context) {
     /** defaultDescending：切換到這種排序時的預設方向（名稱 A→Z；日期、大小新的／大的在前）。 */
     enum class BrowseSort(val defaultDescending: Boolean) { NAME(false), DATE(true), SIZE(true) }
 
-    /** 影片清單的顯示方式，NAS 與本機資料夾共用。 */
+    /**
+     * 影片清單的顯示方式。排序與隱藏小檔由 NAS 與本機資料夾共用；
+     * 「包含子資料夾」每個資料夾各自記住：flatFolders 是開啟的資料夾鍵（FileSource.folderKey），最近開的在前。
+     */
     data class BrowseOptions(
         val sort: BrowseSort = BrowseSort.NAME,
         val descending: Boolean = sort.defaultDescending,
-        val includeSubfolders: Boolean = false,
         val hideSmall: Boolean = true,
-    )
+        val flatFolders: List<String> = emptyList(),
+    ) {
+        fun isFlat(folder: String) = folder in flatFolders
 
-    @Synchronized fun loadBrowseOptions(): BrowseOptions {
-        val o = read("browse.json") ?: return BrowseOptions()
-        val d = BrowseOptions()
-        val sort = BrowseSort.entries.firstOrNull { it.name == o.optString("sort") } ?: d.sort
-        return BrowseOptions(
-            sort = sort,
-            descending = o.optBoolean("descending", sort.defaultDescending),
-            includeSubfolders = o.optBoolean("includeSubfolders", d.includeSubfolders),
-            hideSmall = o.optBoolean("hideSmall", d.hideSmall),
-        )
+        fun withFlat(folder: String, on: Boolean): BrowseOptions {
+            val rest = flatFolders.filter { it != folder }
+            return copy(flatFolders = (if (on) listOf(folder) + rest else rest).take(MAX_FLAT_FOLDERS))
+        }
+
+        fun toJson(): JSONObject = JSONObject()
+            .put("sort", sort.name).put("descending", descending).put("hideSmall", hideSmall)
+            .put("flatFolders", JSONArray(flatFolders))
+
+        companion object {
+            /** 記住幾個「包含子資料夾」開啟的資料夾。 */
+            const val MAX_FLAT_FOLDERS = 200
+
+            /** 舊版的全域 includeSubfolders 欄位不再讀取：升級後每個資料夾都從關閉開始。 */
+            fun fromJson(o: JSONObject): BrowseOptions {
+                val d = BrowseOptions()
+                val sort = BrowseSort.entries.firstOrNull { it.name == o.optString("sort") } ?: d.sort
+                val flat = o.optJSONArray("flatFolders")
+                return BrowseOptions(
+                    sort = sort,
+                    descending = o.optBoolean("descending", sort.defaultDescending),
+                    hideSmall = o.optBoolean("hideSmall", d.hideSmall),
+                    flatFolders = if (flat == null) emptyList()
+                        else (0 until flat.length()).mapNotNull { flat.optString(it).ifEmpty { null } },
+                )
+            }
+        }
     }
 
-    @Synchronized fun saveBrowseOptions(b: BrowseOptions) = write("browse.json", JSONObject()
-        .put("sort", b.sort.name).put("descending", b.descending)
-        .put("includeSubfolders", b.includeSubfolders).put("hideSmall", b.hideSmall))
+    @Synchronized fun loadBrowseOptions(): BrowseOptions =
+        read("browse.json")?.let(BrowseOptions::fromJson) ?: BrowseOptions()
+
+    @Synchronized fun saveBrowseOptions(b: BrowseOptions) = write("browse.json", b.toJson())
 
     @Synchronized fun loadConnection(): SmbConnection =
         read("connection.json")?.let(SmbConnection::fromJson) ?: SmbConnection()

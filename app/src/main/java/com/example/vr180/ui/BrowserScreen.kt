@@ -57,7 +57,7 @@ private val VIDEO_EXT = setOf("mp4", "mkv", "mov", "m4v", "ts", "webm")
 private const val MAX_DEPTH = 3
 
 /** 「隱藏小檔」的門檻：VR180 正片幾乎都大於這個大小，小檔多半是預覽或片段。 */
-private const val SMALL_BYTES = 100L * 1024 * 1024
+private const val SMALL_BYTES = 50L * 1024 * 1024
 
 /** 掃到的一個影片檔，以及它所在的資料夾。dirPath 是相對於目前位置的路徑，空字串代表就在這一層。 */
 private class Found(val entry: FsEntry, val dirId: String, val dirPath: String)
@@ -174,6 +174,8 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
     var reload by remember { mutableIntStateOf(0) }
     var lastOpen by remember { mutableLongStateOf(0L) }
     val dirId = stack.last().second
+    val folder = remember(source, dirId) { source.folderKey(dirId) }
+    val flat = opt.isFlat(folder)
 
     fun update(o: BrowseOptions) { opt = o; store.saveBrowseOptions(o) }
 
@@ -183,11 +185,11 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
     val listing = remember(scanResult, opt.sort, opt.descending, opt.hideSmall) { scanResult.toListing(opt) }
 
     // 只有「包含子資料夾」會改變要讀哪些資料夾；排序與隱藏小檔不重新掃描
-    LaunchedEffect(source, dirId, reload, opt.includeSubfolders) {
+    LaunchedEffect(source, dirId, reload, flat) {
         loading = true; error = null; scanned = 0
         // 掃描中換資料夾或改選項時，舊的掃描會被取消：取消要往外丟，不能當成讀取失敗顯示
         try {
-            scanResult = withContext(Dispatchers.IO) { scan(source, dirId, opt.includeSubfolders) { scanned = it } }
+            scanResult = withContext(Dispatchers.IO) { scan(source, dirId, flat) { scanned = it } }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -226,8 +228,8 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
         }
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
-                selected = opt.includeSubfolders,
-                onClick = { update(opt.copy(includeSubfolders = !opt.includeSubfolders)) },
+                selected = flat,
+                onClick = { update(opt.withFlat(folder, !flat)) },
                 label = { Text(stringResource(R.string.ui_browser_include_subfolders)) },
             )
             FilterChip(
@@ -239,7 +241,7 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
         when {
             loading -> Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 CircularProgressIndicator()
-                if (opt.includeSubfolders && scanned > 0) Text(stringResource(R.string.ui_browser_scanned, scanned))
+                if (flat && scanned > 0) Text(stringResource(R.string.ui_browser_scanned, scanned))
             }
             error != null -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.ui_browser_load_failed, error.orEmpty()), color = MaterialTheme.colorScheme.error)

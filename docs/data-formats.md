@@ -164,16 +164,17 @@ Written when switched on the controller test page. For how `AUTO` decides and th
 
 ## browse.json
 
-Video list display options, shared by NAS and local folders.
+Video list display options. `sort`, `descending` and `hideSmall` are shared by NAS and local folders; "Include subfolders" is remembered per folder.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `sort` | string | `"NAME"` | `"NAME"`, `"DATE"`, `"SIZE"`; other values are treated as `"NAME"` |
 | `descending` | boolean | `false` for `NAME`, `true` for `DATE` and `SIZE` | Whether to sort in reverse; when missing, the default direction for `sort` is used |
-| `includeSubfolders` | boolean | `false` | Whether to list videos in subfolders |
-| `hideSmall` | boolean | `true` | Whether to hide videos under 100 MB |
+| `hideSmall` | boolean | `true` | Whether to hide videos under 50 MB |
+| `flatFolders` | array of string | `[]` | Folders with "Include subfolders" turned on, most recently turned on first, at most 200. Each key is the folder's URI: `smb://host/share/path` for NAS, the SAF document URI for local folders |
 
-Toggling any option writes all four fields. For option behavior, see [the README's "Video list"](../README.md#video-list).
+Toggling any option writes all four fields.
+Upgrading from 0.1.16 or earlier: the old global `includeSubfolders` field is ignored and dropped on the next write, so every folder starts with "Include subfolders" off. For option behavior, see [the README's "Video list"](../README.md#video-list).
 
 ## positions.json
 

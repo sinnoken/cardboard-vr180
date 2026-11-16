@@ -77,7 +77,7 @@ Cross-thread rules:
 1. `BrowserScreen` scans the directory (with subfolders included, breadth-first down to at most 3 levels) and collects only files with the extensions
    `mp4`, `mkv`, `mov`, `m4v`, `ts`, `webm`. Entries whose names start with `.` are excluded at listing time.
    An unreadable subfolder is skipped and counted. If the current level cannot be read, the whole list shows an error.
-   Only changing folders, toggling "Include subfolders", or retrying rescans. Sort and "Hide under 100 MB" apply to the in-memory scan result.
+   Only changing folders, toggling "Include subfolders", or retrying rescans. Sort and "Hide under 50 MB" apply to the in-memory scan result.
    Changing folders or options during a scan cancels the old scan; it is not shown as a read failure.
 2. Files with the same base name in the same folder are grouped into one video. Variants are sorted by resolution tag from high to low
    (untagged original > `8K` > `6K` > `5.7K` > `4K`). For the tag rules, see [the README's "File conventions"](../README.md#file-conventions).

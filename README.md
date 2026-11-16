@@ -168,8 +168,8 @@ If it stutters in both, the cause is decoding or overheating.
 - Sort: name, date, size. Tap the selected sort again to toggle ascending/descending (↑ / ↓). When you change the sort, name defaults to A→Z, and date and size default to newest and largest first.
 - Include subfolders: lists videos up to 3 levels down, each labeled with its folder. Unreadable subfolders are skipped with a notice.
   When enabled, the list shows no folders, only videos.
-- Hide under 100 MB (on by default): filters out small files such as previews and clips. Files whose size the source does not report are not hidden.
-- These three options are remembered and shared by NAS and local folders.
+- Hide under 50 MB (on by default): filters out small files such as previews and clips. Files whose size the source does not report are not hidden.
+- These options are remembered. Sort and "Hide under 50 MB" are shared by NAS and local folders; "Include subfolders" is remembered for each folder separately.
 - The system Back key first goes up one folder level; at the top level it returns to the home screen.
 
 ## File conventions
@@ -209,7 +209,7 @@ ffmpeg -hwaccel cuda -i trip_8K.mp4 -vf scale=5760:2880:flags=lanczos \
 and labels at 60° up, down, left, and right). Use it to check that the eyes are not swapped, the orientation is correct, and the image stays fixed when you turn your head. It requires ffmpeg. For details, see
 [docs/development.md](docs/development.md#test-tools).
 A ready-made file is attached to GitHub Releases (`vr180_test_4K.mp4`).
-The test video is under 100 MB, so the video list hides it by default. Turn off "Hide under 100 MB" to see it.
+The test video is under 50 MB, so the video list hides it by default. Turn off "Hide under 50 MB" to see it.
 
 ## Known limitations
 

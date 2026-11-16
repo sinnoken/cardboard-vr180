@@ -35,6 +35,8 @@ interface FileSource {
     fun playUri(entry: FsEntry): String
     /** 同一資料夾內，這支影片的場景校正檔位置。 */
     fun sidecar(dirId: String, baseName: String): SidecarRef
+    /** 資料夾的唯一鍵（含來源），用來記住每個資料夾各自的選項。 */
+    fun folderKey(dirId: String): String
 }
 
 class SmbFileSource(private val conn: SmbConnection) : FileSource {
@@ -51,6 +53,8 @@ class SmbFileSource(private val conn: SmbConnection) : FileSource {
 
     override fun sidecar(dirId: String, baseName: String) =
         SidecarRef.Smb(SmbRepository.buildUri(conn.host, conn.share, join(dirId, "$baseName.vr180.json")).toString())
+
+    override fun folderKey(dirId: String) = SmbRepository.buildUri(conn.host, conn.share, dirId).toString()
 
     private fun join(dir: String, name: String) = if (dir.isEmpty()) name else "$dir/$name"
 }
@@ -92,6 +96,8 @@ class LocalFileSource(
 
     override fun sidecar(dirId: String, baseName: String) =
         SidecarRef.Local(tree.toString(), dirId, "$baseName.vr180.json")
+
+    override fun folderKey(dirId: String) = DocumentsContract.buildDocumentUriUsingTree(tree, dirId).toString()
 
     companion object {
         /** 讀取資料夾的顯示名稱。 */

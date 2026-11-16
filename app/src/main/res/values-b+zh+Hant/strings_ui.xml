@@ -58,14 +58,14 @@
     <string name="ui_sort_date">日期</string>
     <string name="ui_sort_size">大小</string>
     <string name="ui_browser_include_subfolders">包含子資料夾</string>
-    <string name="ui_browser_hide_small">隱藏小於 100 MB</string>
+    <string name="ui_browser_hide_small">隱藏小於 50 MB</string>
     <string name="ui_browser_scanned">已讀取 %1$d 個資料夾…</string>
     <string name="ui_browser_load_failed">讀取失敗：%1$s</string>
     <string name="ui_browser_up">上一層</string>
     <string name="ui_browser_up_row">‹ 上一層</string>
     <string name="ui_browser_skipped">有 %1$d 個子資料夾讀不到，已略過。</string>
     <string name="ui_browser_empty">這裡沒有影片。</string>
-    <string name="ui_browser_empty_hidden">這裡沒有影片（已隱藏小於 100 MB 的影片）。</string>
+    <string name="ui_browser_empty_hidden">這裡沒有影片（已隱藏小於 50 MB 的影片）。</string>
     <string name="ui_variant_original">原檔</string>
     <string name="ui_gyro_moved">檢測期間手機被移動了，請平放在桌上不要碰觸後重試。</string>
     <string name="ui_gyro_no_samples">樣本不足，這支手機可能沒有提供 Game Rotation Vector 感測器。</string>
