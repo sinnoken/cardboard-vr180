@@ -1,7 +1,7 @@
 [versions]
-agp = "9.5.1"
+agp = "9.5.2"
 kotlin = "2.4.21"            # 只用於 Compose 編譯器外掛；AGP 9 內建 Kotlin 支援
-composeBom = "2026.09.00"
+composeBom = "2026.11.01"
 activity = "1.13.0"
 coreKtx = "1.19.1"
 media3 = "1.11.0"
