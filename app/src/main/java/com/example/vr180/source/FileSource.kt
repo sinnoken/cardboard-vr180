@@ -5,7 +5,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import com.example.vr180.R
-import com.example.vr180.model.SmbConnection
+import com.example.vr180.model.SmbProfile
 import com.example.vr180.smb.SmbRepository
 import java.io.IOException
 
@@ -39,9 +39,22 @@ interface FileSource {
     fun folderKey(dirId: String): String
 }
 
-class SmbFileSource(private val conn: SmbConnection) : FileSource {
+class SmbFileSource(val profile: SmbProfile, private val startPath: String = "") : FileSource {
+    private val conn = profile.conn
     override val label = "\\\\${conn.host}\\${conn.share}"
     override val rootId = ""
+
+    fun initialStack(): List<Pair<String, String>> = buildList {
+        var path = rootId
+        add("" to path)
+        if (startPath.isNotEmpty()) {
+            require(SmbProfile.isBookmarkPath(startPath))
+            for (name in startPath.split('/')) {
+                path = join(path, name)
+                add(name to path)
+            }
+        }
+    }
 
     override fun list(dirId: String): List<FsEntry> {
         SmbRepository.configure(conn)

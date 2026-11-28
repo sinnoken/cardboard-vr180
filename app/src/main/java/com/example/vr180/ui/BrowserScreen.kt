@@ -19,6 +19,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,7 @@ import com.example.vr180.data.ProfileStore.BrowseSort
 import com.example.vr180.source.FileSource
 import com.example.vr180.source.FsEntry
 import com.example.vr180.source.ORIGINAL_LABEL
+import com.example.vr180.source.SmbFileSource
 import com.example.vr180.source.parseVariant
 import com.example.vr180.source.variantRank
 import kotlinx.coroutines.CancellationException
@@ -48,6 +50,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 
@@ -164,16 +167,20 @@ private fun formatSize(bytes: Long): String? = when {
 @Composable
 fun BrowserScreen(source: FileSource, store: ProfileStore) {
     val context = LocalContext.current
+    val smb = source as? SmbFileSource
+    var bookmarks by remember(source) { mutableStateOf(smb?.profile?.bookmarks.orEmpty()) }
     // 目前位置的堆疊：(顯示名稱, 資料夾 id)
-    var stack by remember(source) { mutableStateOf(listOf("" to source.rootId)) }
+    var stack by remember(source) { mutableStateOf(smb?.initialStack() ?: listOf("" to source.rootId)) }
     var opt by remember { mutableStateOf(store.loadBrowseOptions()) }
     var scanResult by remember { mutableStateOf(Scan(emptyList(), emptyList(), 0)) }
     var loading by remember { mutableStateOf(true) }
     var scanned by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
+    var loadedDirId by remember(source) { mutableStateOf<String?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var lastOpen by remember { mutableLongStateOf(0L) }
     val dirId = stack.last().second
+    var bookmarkError by remember(source, dirId) { mutableStateOf<String?>(null) }
     val folder = remember(source, dirId) { source.folderKey(dirId) }
     val flat = opt.isFlat(folder)
 
@@ -190,6 +197,7 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
         // 掃描中換資料夾或改選項時，舊的掃描會被取消：取消要往外丟，不能當成讀取失敗顯示
         try {
             scanResult = withContext(Dispatchers.IO) { scan(source, dirId, flat) { scanned = it } }
+            loadedDirId = dirId
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -203,6 +211,26 @@ fun BrowserScreen(source: FileSource, store: ProfileStore) {
             (listOf(source.label) + stack.drop(1).map { it.first }).joinToString(" / "),
             Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp), style = MaterialTheme.typography.bodySmall,
         )
+        if (smb != null && dirId != source.rootId) {
+            val saved = dirId in bookmarks
+            TextButton(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                enabled = saved || (!loading && error == null && loadedDirId == dirId),
+                onClick = {
+                    try {
+                        bookmarks = store.setSmbBookmark(smb.profile.id, dirId, saved = !saved).bookmarks
+                        bookmarkError = null
+                    } catch (e: IOException) {
+                        bookmarkError = context.getString(R.string.ui_bookmark_update_failed, friendlyError(context, e))
+                    }
+                },
+            ) {
+                Text(stringResource(if (saved) R.string.ui_bookmark_remove else R.string.ui_bookmark_add))
+            }
+            bookmarkError?.let {
+                Text(it, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error)
+            }
+        }
         Row(
             Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
