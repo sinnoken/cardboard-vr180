@@ -151,16 +151,39 @@ data class SmbConnection(
 }
 
 /** 首頁的一組 NAS 連線。name 空白時顯示 \\主機\分享。 */
-data class SmbProfile(val id: String, val name: String = "", val conn: SmbConnection = SmbConnection()) {
+data class SmbProfile(
+    val id: String,
+    val name: String = "",
+    val conn: SmbConnection = SmbConnection(),
+    val bookmarks: List<String> = emptyList(),
+) {
     val label: String get() = name.ifBlank { "\\\\${conn.host}\\${conn.share}" }
 
+    fun withBookmark(path: String, saved: Boolean): SmbProfile {
+        require(isBookmarkPath(path))
+        if ((path in bookmarks) == saved) return this
+        return copy(bookmarks = if (saved) bookmarks + path else bookmarks - path)
+    }
+
     fun toJson(): JSONObject = conn.toJson().put("id", id).put("name", name)
+        .put("bookmarks", JSONArray(bookmarks))
 
     companion object {
         /** 0.1.16 以前的 connection.json 升級成第一個 profile 時用的 id。 */
         const val MIGRATED_ID = "migrated"
 
-        fun fromJson(o: JSONObject) = SmbProfile(o.optString("id"), o.optString("name"), SmbConnection.fromJson(o))
+        fun isBookmarkPath(path: String): Boolean =
+            '\\' !in path && '\u0000' !in path &&
+                path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }
+
+        fun fromJson(o: JSONObject): SmbProfile {
+            val paths = o.optJSONArray("bookmarks")
+            return SmbProfile(
+                o.optString("id"), o.optString("name"), SmbConnection.fromJson(o),
+                (0 until (paths?.length() ?: 0)).mapNotNull { paths?.opt(it) as? String }
+                    .filter(::isBookmarkPath).distinct(),
+            )
+        }
 
         fun listToJson(list: List<SmbProfile>): JSONObject =
             JSONObject().put("profiles", JSONArray().apply { list.forEach { put(it.toJson()) } })

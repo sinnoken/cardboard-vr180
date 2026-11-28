@@ -11,6 +11,7 @@ import com.example.vr180.model.SmbProfile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 
 /**
@@ -90,7 +91,22 @@ class ProfileStore(context: Context) {
         if (File(dir, "connections.json").exists()) read("connections.json")?.let(SmbProfile::listFromJson).orEmpty()
         else SmbProfile.migrate(read("connection.json")?.let(SmbConnection::fromJson))
 
-    @Synchronized fun saveSmbProfiles(list: List<SmbProfile>) = write("connections.json", SmbProfile.listToJson(list))
+    @Synchronized fun saveSmbProfiles(list: List<SmbProfile>) {
+        writeSmbProfiles(list)
+    }
+
+    private fun writeSmbProfiles(list: List<SmbProfile>): Boolean =
+        writeFile(File(dir, "connections.json"), SmbProfile.listToJson(list))
+
+    @Synchronized fun setSmbBookmark(profileId: String, path: String, saved: Boolean): SmbProfile {
+        val profiles = loadSmbProfiles()
+        val profile = profiles.firstOrNull { it.id == profileId } ?: throw IOException("NAS connection not found")
+        val updated = profile.withBookmark(path, saved)
+        if (updated != profile && !writeSmbProfiles(profiles.map { if (it.id == profileId) updated else it })) {
+            throw IOException("Could not save connections.json")
+        }
+        return updated
+    }
 
     /** 使用者授權過的本機資料夾（SAF tree URI）。 */
     data class LocalFolder(val uri: String, val name: String)
@@ -164,20 +180,23 @@ class ProfileStore(context: Context) {
     @Synchronized fun loadScene(key: String): SceneCalib? =
         readFile(File(sceneDir, hash(key) + ".json"))?.let(SceneCalib::fromJson)
 
-    @Synchronized fun saveScene(key: String, s: SceneCalib) =
+    @Synchronized fun saveScene(key: String, s: SceneCalib) {
         writeFile(File(sceneDir, hash(key) + ".json"), s.toJson())
+    }
 
     private fun read(name: String) = readFile(File(dir, name))
     private fun readFile(f: File): JSONObject? =
         if (f.exists()) runCatching { JSONObject(f.readText()) }.getOrNull() else null
 
-    private fun write(name: String, o: JSONObject) = writeFile(File(dir, name), o)
+    private fun write(name: String, o: JSONObject) {
+        writeFile(File(dir, name), o)
+    }
 
-    private fun writeFile(f: File, o: JSONObject) {
+    private fun writeFile(f: File, o: JSONObject): Boolean {
         // 先寫暫存檔再改名，避免寫到一半斷電把設定弄壞
         val tmp = File(f.parentFile, f.name + ".tmp")
         tmp.writeText(o.toString(2))
-        tmp.renameTo(f)
+        return tmp.renameTo(f)
     }
 
     private fun hash(s: String): String =

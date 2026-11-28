@@ -84,6 +84,7 @@ fun SmbEditScreen(store: ProfileStore, profileId: String?, onDone: () -> Unit) {
             name = name.trim(),
             // 網域沒有輸入欄：保留手動寫進檔案的值
             conn = SmbConnection(host.trim(), share.trim(), user, pass, existing?.conn?.domain.orEmpty()),
+            bookmarks = list.firstOrNull { it.id == profileId }?.bookmarks.orEmpty(),
         )
         store.saveSmbProfiles(if (existing == null) list + p else list.map { if (it.id == p.id) p else it })
         onDone()

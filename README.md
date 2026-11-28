@@ -167,6 +167,7 @@ If a NAS connection fails, the reason appears under that row.
   Windows shares and some NAS models do not announce themselves; type the IP or name instead. If the NAS gets a new IP later, edit the connection and search again.
 - Fill in the share, user name, and password. A blank user name logs in as guest.
 - The name is optional; without one, the row shows `\\host\share`.
+- In a NAS subfolder, tap **Bookmark this folder**. Tap its shortcut under **Bookmarks** on Home to open it directly; the original NAS entry still opens the share root. To remove a shortcut, long-press it or tap **Remove bookmark** in the folder.
 
 Connections from 0.1.16 and earlier are kept: the single saved connection becomes the first entry.
 

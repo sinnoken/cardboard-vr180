@@ -22,6 +22,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,6 +42,11 @@ import com.example.vr180.source.SmbFileSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
+
+private data class NasTarget(val profile: SmbProfile, val path: String = "") {
+    val key get() = profile.id to path
+}
 
 /** 首頁：影片來源清單（NAS 連線與本機資料夾），點一下就開。editNas(null) 是新增。 */
 @Composable
@@ -50,11 +56,19 @@ fun HomeScreen(store: ProfileStore, editNas: (String?) -> Unit, openSource: (Fil
     var profiles by remember { mutableStateOf(store.loadSmbProfiles()) }
     var folders by remember { mutableStateOf(store.loadFolders()) }
     var busyId by remember { mutableStateOf<String?>(null) }
-    var error by remember { mutableStateOf<Pair<String, String>?>(null) }   // (來源 id, 訊息)
-    var pending by remember { mutableStateOf<SmbProfile?>(null) }            // 等權限回來再連線的那一組
+    var error by remember { mutableStateOf<Pair<Pair<String, String>, String>?>(null) }
+    var pending by remember { mutableStateOf<NasTarget?>(null) }
 
-    fun connect(p: SmbProfile) {
-        busyId = p.id; error = null
+    fun connect(target: NasTarget) {
+        val p = target.profile
+        error = null
+        val source = SmbFileSource(p, target.path)
+        if (target.path.isNotEmpty()) {
+            // Let the browser load the bookmarked folder directly and offer Retry/Up if it fails.
+            openSource(source)
+            return
+        }
+        busyId = p.id
         scope.launch {
             val r = withContext(Dispatchers.IO) {
                 runCatching {
@@ -63,16 +77,21 @@ fun HomeScreen(store: ProfileStore, editNas: (String?) -> Unit, openSource: (Fil
                 }
             }
             busyId = null
-            r.onSuccess { openSource(SmbFileSource(p.conn)) }
-                .onFailure { error = p.id to context.getString(R.string.ui_home_connect_failed, friendlyError(context, it)) }
+            r.onSuccess { openSource(source) }
+                .onFailure { error = target.key to context.getString(R.string.ui_home_connect_failed, friendlyError(context, it)) }
         }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        val p = pending
+        val target = pending
         pending = null
-        if (p == null) return@rememberLauncherForActivityResult
-        if (ok) connect(p) else error = p.id to context.getString(R.string.ui_home_permission_needed)
+        if (target == null) return@rememberLauncherForActivityResult
+        if (ok) connect(target) else error = target.key to context.getString(R.string.ui_home_permission_needed)
+    }
+
+    fun openNas(target: NasTarget) {
+        if (LocalNetworkPermission.granted(context)) connect(target)
+        else { pending = target; permissionLauncher.launch(LocalNetworkPermission.NAME) }
     }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -98,6 +117,7 @@ fun HomeScreen(store: ProfileStore, editNas: (String?) -> Unit, openSource: (Fil
             Text(stringResource(R.string.ui_home_empty), style = MaterialTheme.typography.bodyMedium)
         }
         profiles.forEach { p ->
+            val target = NasTarget(p)
             SourceRow(
                 icon = "🖧",
                 title = p.label,
@@ -107,12 +127,9 @@ fun HomeScreen(store: ProfileStore, editNas: (String?) -> Unit, openSource: (Fil
                     else -> "\\\\${p.conn.host}\\${p.conn.share} · " +
                         p.conn.user.ifBlank { stringResource(R.string.ui_home_guest) }
                 },
-                error = error?.takeIf { it.first == p.id }?.second,
-                enabled = busyId == null,
-                onClick = {
-                    if (LocalNetworkPermission.granted(context)) connect(p)
-                    else { pending = p; permissionLauncher.launch(LocalNetworkPermission.NAME) }
-                },
+                error = error?.takeIf { it.first == target.key }?.second,
+                enabled = busyId == null && pending == null,
+                onClick = { openNas(target) },
                 menu = listOf(
                     stringResource(R.string.ui_edit) to { editNas(p.id) },
                     stringResource(R.string.ui_delete) to {
@@ -145,6 +162,35 @@ fun HomeScreen(store: ProfileStore, editNas: (String?) -> Unit, openSource: (Fil
             OutlinedButton(onClick = { pickFolder.launch(null) }) { Text(stringResource(R.string.ui_home_add_folder)) }
         }
         Text(stringResource(R.string.ui_home_local_hint), style = MaterialTheme.typography.bodySmall)
+        if (profiles.any { it.bookmarks.isNotEmpty() }) {
+            Text(stringResource(R.string.ui_home_bookmarks), style = MaterialTheme.typography.titleMedium)
+            profiles.forEach { p ->
+                p.bookmarks.forEach { path ->
+                    val target = NasTarget(p, path)
+                    key(target.key) {
+                        SourceRow(
+                            icon = "★",
+                            title = path.substringAfterLast('/'),
+                            detail = "${p.label} / $path",
+                            error = error?.takeIf { it.first == target.key }?.second,
+                            enabled = busyId == null && pending == null,
+                            onClick = { openNas(target) },
+                            menu = listOf(stringResource(R.string.ui_bookmark_remove) to {
+                                try {
+                                    store.setSmbBookmark(p.id, path, saved = false)
+                                    profiles = store.loadSmbProfiles()
+                                    error = null
+                                } catch (e: IOException) {
+                                    error = target.key to context.getString(
+                                        R.string.ui_bookmark_update_failed, friendlyError(context, e),
+                                    )
+                                }
+                            }),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

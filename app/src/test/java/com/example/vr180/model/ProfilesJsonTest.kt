@@ -30,7 +30,7 @@ class ProfilesJsonTest {
 
     @Test fun smbProfilesRoundTrip() {
         val list = listOf(
-            SmbProfile("a", "客廳", SmbConnection("192.168.1.20", "video", "me", "pw")),
+            SmbProfile("a", "客廳", SmbConnection("192.168.1.20", "video", "me", "pw"), listOf("旅遊/2026 #1", "VR")),
             SmbProfile("b", conn = SmbConnection("192.168.1.20", "kids")),
         )
         assertEquals(list, SmbProfile.listFromJson(JSONObject(SmbProfile.listToJson(list).toString())))
@@ -40,6 +40,23 @@ class ProfilesJsonTest {
     @Test fun smbProfileWithoutIdIsSkipped() {
         val o = JSONObject().put("profiles", org.json.JSONArray().put(JSONObject().put("host", "x")))
         assertEquals(emptyList<SmbProfile>(), SmbProfile.listFromJson(o))
+    }
+
+    @Test fun smbProfileBookmarksDefaultToEmptyAndIgnoreInvalidPaths() {
+        val profile = JSONObject("""{"id":"a","host":"nas","share":"video"}""")
+        assertEquals(emptyList<String>(), SmbProfile.fromJson(profile).bookmarks)
+        profile.put("bookmarks", org.json.JSONArray("""["","/absolute","one/../two","one//two","one\\two",42,"one/two","one/two"]"""))
+        assertEquals(listOf("one/two"), SmbProfile.fromJson(profile).bookmarks)
+    }
+
+    @Test fun smbBookmarksCanBeAddedAndRemovedIndependently() {
+        val original = SmbProfile("a")
+        val saved = original.withBookmark("Trips/2026", saved = true)
+            .withBookmark("VR", saved = true)
+            .withBookmark("Trips/2026", saved = true)
+        assertEquals(listOf("Trips/2026", "VR"), saved.bookmarks)
+        assertEquals(listOf("VR"), saved.withBookmark("Trips/2026", saved = false).bookmarks)
+        assertEquals(emptyList<String>(), original.bookmarks)
     }
 
     @Test fun oldSingleConnectionMigrates() {

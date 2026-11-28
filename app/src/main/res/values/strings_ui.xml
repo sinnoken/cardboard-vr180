@@ -37,6 +37,10 @@
     <string name="ui_home_add_folder">+ Local folder</string>
     <string name="ui_home_add_nas">+ NAS</string>
     <string name="ui_home_sources_title">Video sources</string>
+    <string name="ui_home_bookmarks">Bookmarks</string>
+    <string name="ui_bookmark_add">Bookmark this folder</string>
+    <string name="ui_bookmark_remove">Remove bookmark</string>
+    <string name="ui_bookmark_update_failed">Couldn\'t update bookmark: %1$s</string>
     <string name="ui_home_empty">No sources yet. Add a NAS or a local folder.</string>
     <string name="ui_home_local">Local folder</string>
     <string name="ui_home_guest">Guest</string>

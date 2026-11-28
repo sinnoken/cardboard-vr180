@@ -123,7 +123,7 @@ Defined in `LensProfile.presets()` and not saved. `offsetXMm` and `tiltDeg` are 
 Saved NAS connections (`SmbProfile`), in the order shown on the home screen.
 
 ```json
-{ "profiles": [ { "id": "…", "name": "Living room", "host": "192.168.1.20", "share": "video", "user": "me", "password": "…", "domain": "" } ] }
+{ "profiles": [ { "id": "…", "name": "Living room", "host": "192.168.1.20", "share": "video", "user": "me", "password": "…", "domain": "", "bookmarks": ["Trips/2026"] } ] }
 ```
 
 | Field | Type | Default | Meaning |
@@ -136,8 +136,9 @@ Saved NAS connections (`SmbProfile`), in the order shown on the home screen.
 | `profiles[].user` | string | `""` | User name; blank (including whitespace only) logs in as guest |
 | `profiles[].password` | string | `""` | Password, in **plain text** |
 | `profiles[].domain` | string | `""` | Domain. There is no input field; a value written into the file by hand is kept on save |
+| `profiles[].bookmarks` | array of string | `[]` | Home shortcuts for this connection, stored as share-relative folder paths with `/` separators |
 
-- Written when a connection is saved or deleted. Connecting does not write the file.
+- Written when a connection is saved or deleted or a bookmark is added or removed. Connecting does not write the file.
 - `host`, `share` and `name` are trimmed on save; `user` and `password` are stored as is.
 - Upgrading from 0.1.16 or earlier: only while `connections.json` does not exist (a corrupt file reads as an empty list), the old `connection.json` (one connection with the same fields as a profile, without `id` and `name`)
   is read as a single profile with ID `"migrated"` if its `host` is not blank. The first save writes `connections.json`; the old file is left in place and no longer read.
